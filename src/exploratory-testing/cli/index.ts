@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { cac } from "cac";
 
 import { progressStatusSchema } from "../models/progress";
+import { runDiscoverContext } from "../tools/discover-context";
 import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
 import { readPluginManifest } from "../tools/manifest";
 import { runPrIntake } from "../tools/pr-intake";
@@ -19,6 +20,12 @@ type WorkspaceCommandOptions = {
 
 type PrIntakeCommandOptions = WorkspaceCommandOptions & {
   readonly pr?: number;
+};
+
+type DiscoverContextCommandOptions = WorkspaceCommandOptions & {
+  readonly pr?: number;
+  readonly provider?: string;
+  readonly repository?: string;
 };
 
 type HandoverCommandOptions = WorkspaceCommandOptions & {
@@ -133,6 +140,55 @@ cli
       headSha: result.persisted.headSha,
       changedFiles: result.persisted.changedFiles.length,
       reviewComments: result.persisted.reviewComments.length,
+      handoverPath: result.handover.filePath,
+      status: result.handover.snapshot.status,
+    });
+  });
+
+cli
+  .command(
+    "discover-context",
+    "Analyze diff and context from an ingested PR/MR",
+  )
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--pr <prNumber>", "PR or MR number")
+  .option("--provider <provider>", "SCM provider (github or gitlab)")
+  .option("--repository <repository>", "Repository in owner/repo format")
+  .action(async (options: DiscoverContextCommandOptions) => {
+    if (!options.pr) {
+      throw new Error("The --pr option is required.");
+    }
+    if (!options.provider) {
+      throw new Error("The --provider option is required.");
+    }
+    if (!options.repository) {
+      throw new Error("The --repository option is required.");
+    }
+
+    const result = await runDiscoverContext({
+      prNumber: options.pr,
+      provider: options.provider,
+      repository: options.repository,
+      configPath: options.config,
+      manifestPath: options.manifest,
+    });
+
+    emitJson({
+      prIntakeId: result.persisted.prIntakeId,
+      filesAnalyzed: result.persisted.fileAnalyses.length,
+      categoriesFound: [
+        ...new Set(
+          result.persisted.fileAnalyses.flatMap((f) =>
+            f.categories.map((c) => c.category),
+          ),
+        ),
+      ],
+      relatedCodes: result.persisted.relatedCodes.length,
+      viewpointSeeds: result.persisted.viewpointSeeds.filter(
+        (v) => v.seeds.length > 0,
+      ).length,
+      summary: result.persisted.summary,
       handoverPath: result.handover.filePath,
       status: result.handover.snapshot.status,
     });

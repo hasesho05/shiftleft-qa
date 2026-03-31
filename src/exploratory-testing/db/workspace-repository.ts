@@ -6,6 +6,12 @@ import { z } from "zod";
 
 import { WORKFLOW_SKILLS, getWorkflowSkillOrThrow } from "../config/workflow";
 import {
+  type ChangeAnalysisResult,
+  fileChangeAnalysisSchema,
+  relatedCodeCandidateSchema,
+  viewpointSeedSchema,
+} from "../models/change-analysis";
+import {
   type PrMetadata,
   changedFileSchema,
   reviewCommentSchema,
@@ -528,6 +534,135 @@ function mapPrIntakeRow(row: PrIntakeRow): PersistedPrIntake {
       .array(reviewCommentSchema)
       .parse(JSON.parse(row.review_comments_json)),
     fetchedAt: row.fetched_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// --- Change Analysis repository ---
+
+export type PersistedChangeAnalysis = {
+  readonly id: number;
+  readonly prIntakeId: number;
+  readonly fileAnalyses: ChangeAnalysisResult["fileAnalyses"];
+  readonly relatedCodes: ChangeAnalysisResult["relatedCodes"];
+  readonly viewpointSeeds: ChangeAnalysisResult["viewpointSeeds"];
+  readonly summary: string;
+  readonly analyzedAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type ChangeAnalysisRow = {
+  readonly id: number;
+  readonly pr_intake_id: number;
+  readonly file_analyses_json: string;
+  readonly related_codes_json: string;
+  readonly viewpoint_seeds_json: string;
+  readonly summary: string;
+  readonly analyzed_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export function saveChangeAnalysis(
+  databasePath: string,
+  result: ChangeAnalysisResult,
+): PersistedChangeAnalysis {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO change_analyses (
+            pr_intake_id, file_analyses_json, related_codes_json,
+            viewpoint_seeds_json, summary, analyzed_at,
+            created_at, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+          ON CONFLICT(pr_intake_id) DO UPDATE SET
+            file_analyses_json = excluded.file_analyses_json,
+            related_codes_json = excluded.related_codes_json,
+            viewpoint_seeds_json = excluded.viewpoint_seeds_json,
+            summary = excluded.summary,
+            analyzed_at = excluded.analyzed_at,
+            updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          result.prIntakeId,
+          JSON.stringify(result.fileAnalyses),
+          JSON.stringify(result.relatedCodes),
+          JSON.stringify(result.viewpointSeeds),
+          result.summary,
+          result.analyzedAt,
+          timestamp,
+          timestamp,
+        );
+
+      return database
+        .query(
+          `
+          SELECT * FROM change_analyses
+          WHERE pr_intake_id = ?1
+          `,
+        )
+        .get<ChangeAnalysisRow>(result.prIntakeId);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist change analysis for pr_intake_id=${result.prIntakeId}`,
+      );
+    }
+
+    return mapChangeAnalysisRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function findChangeAnalysis(
+  databasePath: string,
+  prIntakeId: number,
+): PersistedChangeAnalysis | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query(
+        `
+        SELECT * FROM change_analyses
+        WHERE pr_intake_id = ?1
+        `,
+      )
+      .get<ChangeAnalysisRow>(prIntakeId);
+
+    return row ? mapChangeAnalysisRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+function mapChangeAnalysisRow(row: ChangeAnalysisRow): PersistedChangeAnalysis {
+  return {
+    id: row.id,
+    prIntakeId: row.pr_intake_id,
+    fileAnalyses: z
+      .array(fileChangeAnalysisSchema)
+      .parse(JSON.parse(row.file_analyses_json)),
+    relatedCodes: z
+      .array(relatedCodeCandidateSchema)
+      .parse(JSON.parse(row.related_codes_json)),
+    viewpointSeeds: z
+      .array(viewpointSeedSchema)
+      .parse(JSON.parse(row.viewpoint_seeds_json)),
+    summary: row.summary,
+    analyzedAt: row.analyzed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

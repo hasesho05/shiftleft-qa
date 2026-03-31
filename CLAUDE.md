@@ -178,6 +178,37 @@ Issue #7 完了時点:
 - SQLite 初期化、WAL、`foreign_keys` 有効化が実装済み
 - workspace 初期化は冪等
 
+## Known Pitfalls
+
+Issue #2 実装時に踏んだ落とし穴。同じミスを繰り返さないための記録。
+
+### ResolvedPluginConfig のパス使い分け
+
+- `config.repositoryRoot` — config.json に書かれた**生の値**（多くの場合 `"."`）
+- `config.workspaceRoot` — configDirectory + repositoryRoot を解決した**絶対パス**
+
+`execa` や `git` の `cwd` には必ず `config.workspaceRoot` を使う。`repositoryRoot` を渡すと `--config` を別ディレクトリから指定したときに壊れる。
+
+### CLI は薄く保つ
+
+CLI (`cli/index.ts`) に provider 判定や fetch ロジックを直接書かない。CLI の責務は引数受け取り + JSON 出力のみ。ビジネスロジックは `tools/` に、SCM 抽象は `scm/` に置く。既存の `setup`, `progress` コマンドのパターンに揃える。
+
+### 外部プロセス出力は Zod で検証する
+
+`gh` CLI の JSON 出力を `JSON.parse()` した後に `as Record<string, unknown>` で済ませない。このリポジトリは config/manifest で Zod 検証を徹底しているので、外部コマンド出力も同じ基準で検証する。DB から読み出した JSON カラムも同様。
+
+### DB の INSERT + SELECT は transaction で包む
+
+`savePrIntake` のように INSERT → 直後の SELECT で結果を返すパターンは `database.transaction()` で包む。既存の `upsertStepHandoverRecord` が同じパターンを使っている。
+
+### gh pr view の呼び出しは1回にまとめる
+
+`gh pr view --json field1,field2,...` は1回の呼び出しで複数フィールドを取得できる。PR metadata / files / reviews を個別に3回呼ぶ必要はない。
+
+### standalone function type は禁止
+
+AGENT.md に明記されている。`type Handler = (input: Input) => Output` は書かない。`Parameters<typeof fn>[0]` のような間接参照も避け、名前付き型を直接 import する。ルールは `.claude/rules/no-standalone-function-types.md` にも定義済み。
+
 ## 深い仕様を確認したいとき
 
 横断的な仕様変更やアーキテクチャ変更のときだけ参照:

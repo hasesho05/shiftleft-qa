@@ -103,15 +103,17 @@ export function parseGhPrFilesJson(
 export function parseGhPrCommentsJson(
   json: readonly Record<string, unknown>[],
 ): readonly ReviewComment[] {
-  return json.map((comment) => {
-    const parsed = ghReviewSchema.parse(comment);
-    return {
-      author: parsed.author.login,
-      body: parsed.body,
-      path: null,
-      createdAt: parsed.submittedAt ?? new Date().toISOString(),
-    };
-  });
+  return json
+    .map((comment) => {
+      const parsed = ghReviewSchema.parse(comment);
+      return {
+        author: parsed.author.login,
+        body: parsed.body,
+        path: null,
+        createdAt: parsed.submittedAt ?? new Date().toISOString(),
+      };
+    })
+    .filter((comment) => comment.body.trim().length > 0);
 }
 
 export function buildPrMetadata(

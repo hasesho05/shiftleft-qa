@@ -140,6 +140,31 @@ describe("parseGhPrCommentsJson", () => {
       createdAt: "2026-04-01T00:00:00Z",
     });
   });
+
+  it("filters out empty review comments", () => {
+    const json = [
+      {
+        author: { login: "bob" },
+        body: "Looks good",
+        submittedAt: "2026-04-01T00:00:00Z",
+      },
+      {
+        author: { login: "carol" },
+        body: "",
+        submittedAt: "2026-04-01T01:00:00Z",
+      },
+      {
+        author: { login: "dave" },
+        body: "   ",
+        submittedAt: "2026-04-01T02:00:00Z",
+      },
+    ];
+
+    const result = parseGhPrCommentsJson(json);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.author).toBe("bob");
+  });
 });
 
 describe("buildPrMetadata", () => {

@@ -2,9 +2,14 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { Database } from "bun:sqlite";
+import { z } from "zod";
 
 import { WORKFLOW_SKILLS, getWorkflowSkillOrThrow } from "../config/workflow";
-import type { PrMetadata } from "../models/pr-intake";
+import {
+  type PrMetadata,
+  changedFileSchema,
+  reviewCommentSchema,
+} from "../models/pr-intake";
 import {
   type ProgressStatus,
   type StepProgressSnapshot,
@@ -391,59 +396,63 @@ export function savePrIntake(
   const timestamp = new Date().toISOString();
 
   try {
-    database
-      .query(
-        `
-        INSERT INTO pr_intakes (
-          provider, repository, pr_number, title, description,
-          author, base_branch, head_branch, head_sha,
-          linked_issues_json, changed_files_json, review_comments_json,
-          fetched_at, created_at, updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
-        ON CONFLICT(provider, repository, pr_number, head_sha) DO UPDATE SET
-          title = excluded.title,
-          description = excluded.description,
-          author = excluded.author,
-          base_branch = excluded.base_branch,
-          head_branch = excluded.head_branch,
-          linked_issues_json = excluded.linked_issues_json,
-          changed_files_json = excluded.changed_files_json,
-          review_comments_json = excluded.review_comments_json,
-          fetched_at = excluded.fetched_at,
-          updated_at = excluded.updated_at
-        `,
-      )
-      .run(
-        metadata.provider,
-        metadata.repository,
-        metadata.prNumber,
-        metadata.title,
-        metadata.description,
-        metadata.author,
-        metadata.baseBranch,
-        metadata.headBranch,
-        metadata.headSha,
-        JSON.stringify(metadata.linkedIssues),
-        JSON.stringify(metadata.changedFiles),
-        JSON.stringify(metadata.reviewComments),
-        metadata.fetchedAt,
-        timestamp,
-        timestamp,
-      );
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO pr_intakes (
+            provider, repository, pr_number, title, description,
+            author, base_branch, head_branch, head_sha,
+            linked_issues_json, changed_files_json, review_comments_json,
+            fetched_at, created_at, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+          ON CONFLICT(provider, repository, pr_number, head_sha) DO UPDATE SET
+            title = excluded.title,
+            description = excluded.description,
+            author = excluded.author,
+            base_branch = excluded.base_branch,
+            head_branch = excluded.head_branch,
+            linked_issues_json = excluded.linked_issues_json,
+            changed_files_json = excluded.changed_files_json,
+            review_comments_json = excluded.review_comments_json,
+            fetched_at = excluded.fetched_at,
+            updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          metadata.provider,
+          metadata.repository,
+          metadata.prNumber,
+          metadata.title,
+          metadata.description,
+          metadata.author,
+          metadata.baseBranch,
+          metadata.headBranch,
+          metadata.headSha,
+          JSON.stringify(metadata.linkedIssues),
+          JSON.stringify(metadata.changedFiles),
+          JSON.stringify(metadata.reviewComments),
+          metadata.fetchedAt,
+          timestamp,
+          timestamp,
+        );
 
-    const row = database
-      .query(
-        `
-        SELECT * FROM pr_intakes
-        WHERE provider = ?1 AND repository = ?2 AND pr_number = ?3 AND head_sha = ?4
-        `,
-      )
-      .get<PrIntakeRow>(
-        metadata.provider,
-        metadata.repository,
-        metadata.prNumber,
-        metadata.headSha,
-      );
+      return database
+        .query(
+          `
+          SELECT * FROM pr_intakes
+          WHERE provider = ?1 AND repository = ?2 AND pr_number = ?3 AND head_sha = ?4
+          `,
+        )
+        .get<PrIntakeRow>(
+          metadata.provider,
+          metadata.repository,
+          metadata.prNumber,
+          metadata.headSha,
+        );
+    });
+
+    const row = persist();
 
     if (!row) {
       throw new Error(
@@ -511,13 +520,13 @@ function mapPrIntakeRow(row: PrIntakeRow): PersistedPrIntake {
     baseBranch: row.base_branch,
     headBranch: row.head_branch,
     headSha: row.head_sha,
-    linkedIssues: JSON.parse(row.linked_issues_json) as string[],
-    changedFiles: JSON.parse(
-      row.changed_files_json,
-    ) as PrMetadata["changedFiles"],
-    reviewComments: JSON.parse(
-      row.review_comments_json,
-    ) as PrMetadata["reviewComments"],
+    linkedIssues: z.array(z.string()).parse(JSON.parse(row.linked_issues_json)),
+    changedFiles: z
+      .array(changedFileSchema)
+      .parse(JSON.parse(row.changed_files_json)),
+    reviewComments: z
+      .array(reviewCommentSchema)
+      .parse(JSON.parse(row.review_comments_json)),
     fetchedAt: row.fetched_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

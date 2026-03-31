@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { Database } from "bun:sqlite";
 
 import { WORKFLOW_SKILLS, getWorkflowSkillOrThrow } from "../config/workflow";
+import type { PrMetadata } from "../models/pr-intake";
 import {
   type ProgressStatus,
   type StepProgressSnapshot,
@@ -339,5 +340,186 @@ function mapStepProgressRow(row: StepProgressRow): StepProgressSnapshot {
     progressPath: row.progress_path,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
+  };
+}
+
+// --- PR Intake repository ---
+
+export type PersistedPrIntake = {
+  readonly id: number;
+  readonly provider: string;
+  readonly repository: string;
+  readonly prNumber: number;
+  readonly title: string;
+  readonly description: string;
+  readonly author: string;
+  readonly baseBranch: string;
+  readonly headBranch: string;
+  readonly headSha: string;
+  readonly linkedIssues: readonly string[];
+  readonly changedFiles: PrMetadata["changedFiles"];
+  readonly reviewComments: PrMetadata["reviewComments"];
+  readonly fetchedAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type PrIntakeRow = {
+  readonly id: number;
+  readonly provider: string;
+  readonly repository: string;
+  readonly pr_number: number;
+  readonly title: string;
+  readonly description: string;
+  readonly author: string;
+  readonly base_branch: string;
+  readonly head_branch: string;
+  readonly head_sha: string;
+  readonly linked_issues_json: string;
+  readonly changed_files_json: string;
+  readonly review_comments_json: string;
+  readonly fetched_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export function savePrIntake(
+  databasePath: string,
+  metadata: PrMetadata,
+): PersistedPrIntake {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    database
+      .query(
+        `
+        INSERT INTO pr_intakes (
+          provider, repository, pr_number, title, description,
+          author, base_branch, head_branch, head_sha,
+          linked_issues_json, changed_files_json, review_comments_json,
+          fetched_at, created_at, updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+        ON CONFLICT(provider, repository, pr_number, head_sha) DO UPDATE SET
+          title = excluded.title,
+          description = excluded.description,
+          author = excluded.author,
+          base_branch = excluded.base_branch,
+          head_branch = excluded.head_branch,
+          linked_issues_json = excluded.linked_issues_json,
+          changed_files_json = excluded.changed_files_json,
+          review_comments_json = excluded.review_comments_json,
+          fetched_at = excluded.fetched_at,
+          updated_at = excluded.updated_at
+        `,
+      )
+      .run(
+        metadata.provider,
+        metadata.repository,
+        metadata.prNumber,
+        metadata.title,
+        metadata.description,
+        metadata.author,
+        metadata.baseBranch,
+        metadata.headBranch,
+        metadata.headSha,
+        JSON.stringify(metadata.linkedIssues),
+        JSON.stringify(metadata.changedFiles),
+        JSON.stringify(metadata.reviewComments),
+        metadata.fetchedAt,
+        timestamp,
+        timestamp,
+      );
+
+    const row = database
+      .query(
+        `
+        SELECT * FROM pr_intakes
+        WHERE provider = ?1 AND repository = ?2 AND pr_number = ?3 AND head_sha = ?4
+        `,
+      )
+      .get<PrIntakeRow>(
+        metadata.provider,
+        metadata.repository,
+        metadata.prNumber,
+        metadata.headSha,
+      );
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist PR intake for ${metadata.provider}/${metadata.repository}#${metadata.prNumber}`,
+      );
+    }
+
+    return mapPrIntakeRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function findPrIntake(
+  databasePath: string,
+  provider: string,
+  repository: string,
+  prNumber: number,
+): PersistedPrIntake | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query(
+        `
+        SELECT * FROM pr_intakes
+        WHERE provider = ?1 AND repository = ?2 AND pr_number = ?3
+        ORDER BY updated_at DESC
+        LIMIT 1
+        `,
+      )
+      .get<PrIntakeRow>(provider, repository, prNumber);
+
+    return row ? mapPrIntakeRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+export function listPrIntakes(
+  databasePath: string,
+): readonly PersistedPrIntake[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query("SELECT * FROM pr_intakes ORDER BY updated_at DESC")
+      .all<PrIntakeRow>();
+
+    return rows.map(mapPrIntakeRow);
+  } finally {
+    database.close();
+  }
+}
+
+function mapPrIntakeRow(row: PrIntakeRow): PersistedPrIntake {
+  return {
+    id: row.id,
+    provider: row.provider,
+    repository: row.repository,
+    prNumber: row.pr_number,
+    title: row.title,
+    description: row.description,
+    author: row.author,
+    baseBranch: row.base_branch,
+    headBranch: row.head_branch,
+    headSha: row.head_sha,
+    linkedIssues: JSON.parse(row.linked_issues_json) as string[],
+    changedFiles: JSON.parse(
+      row.changed_files_json,
+    ) as PrMetadata["changedFiles"],
+    reviewComments: JSON.parse(
+      row.review_comments_json,
+    ) as PrMetadata["reviewComments"],
+    fetchedAt: row.fetched_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }

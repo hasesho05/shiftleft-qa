@@ -5,6 +5,7 @@ import { cac } from "cac";
 import { progressStatusSchema } from "../models/progress";
 import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
 import { readPluginManifest } from "../tools/manifest";
+import { runPrIntake } from "../tools/pr-intake";
 import { writeProgressSummary, writeStepHandover } from "../tools/progress";
 import {
   initializeDatabaseFromConfig,
@@ -14,6 +15,10 @@ import {
 type WorkspaceCommandOptions = {
   readonly config?: string;
   readonly manifest?: string;
+};
+
+type PrIntakeCommandOptions = WorkspaceCommandOptions & {
+  readonly pr?: number;
 };
 
 type HandoverCommandOptions = WorkspaceCommandOptions & {
@@ -100,6 +105,36 @@ cli
       databasePath: result.databasePath,
       journalMode: result.journalMode,
       foreignKeys: result.foreignKeys,
+    });
+  });
+
+cli
+  .command("pr-intake", "Ingest PR/MR metadata and changed files")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--pr <prNumber>", "PR or MR number")
+  .action(async (options: PrIntakeCommandOptions) => {
+    if (!options.pr) {
+      throw new Error("The --pr option is required.");
+    }
+
+    const result = await runPrIntake({
+      prNumber: options.pr,
+      configPath: options.config,
+      manifestPath: options.manifest,
+    });
+
+    emitJson({
+      provider: result.persisted.provider,
+      repository: result.persisted.repository,
+      prNumber: result.persisted.prNumber,
+      title: result.persisted.title,
+      author: result.persisted.author,
+      headSha: result.persisted.headSha,
+      changedFiles: result.persisted.changedFiles.length,
+      reviewComments: result.persisted.reviewComments.length,
+      handoverPath: result.handover.filePath,
+      status: result.handover.snapshot.status,
     });
   });
 

@@ -1,54 +1,67 @@
 ---
 name: tdd-cycle
 description: |
-  GitHub Issue ベースで、このリポジトリの実装を TDD で進めるための標準サイクル。
-  Claude Code での通常実装・不具合修正・小規模リファクタに使う。
-  受け入れ基準に live E2E やブラウザ確認が含まれる場合は、
-  build 完了だけで done とせず、別途その検証を完了すること。
+  TDD開発 → レビュー → 修正 → 再レビュー → コミット → PR作成の完全サイクル。
+  GitHub Issue ベースの実装・修正・リファクタで使う。テスト駆動開発で実装し、
+  code-simplifier の後に codex-review を必須で実施
 ---
 
-# TDD Cycle
+# TDD Development Cycle
 
-このリポジトリでは、通常の Issue 実装は `Issue + CLAUDE.md + 現状コード` で進めてよい。
-`requirements.md` と `stateful-workflow-plugin-framework.md` は、Issue で判断できない
-横断仕様や大きな設計変更が入るときだけ参照する。
+GitHub Issue を前提に、このワークフローを順に実行する。各フェーズの完了を確認してから次に進むこと。
 
-## Phase 0: Start
+---
 
-1. `gh issue view <number>` で対象 Issue の受け入れ基準・スコープ・依存関係を確認する
-2. `CLAUDE.md` を読んで、このリポジトリの不変ルールを確認する
-3. `main` を最新化し、issue 用 branch を切る
-4. 対象コードと既存テストを確認する
-5. 変更対象を小さく分け、1サイクルで何を GREEN にするか決める
+## Phase 0: 準備
+
+1. `gh issue view` で対象 Issue の受け入れ基準・要件を把握する
+2. `CLAUDE.md` と `.claude/rules/` 配下のルールを確認する
+3. 対象コードの現状を調査する
+4. フェーズごとのタスクを作成し、進捗を追跡する
+
+### 5. ブランチセットアップ
+
+main ブランチを最新にし、feature ブランチを作成する。
 
 ```bash
-git fetch origin
-git checkout main
-git pull --ff-only origin main
-git checkout -b issue-<number>-<short-slug>
+git fetch origin main:main
+git checkout -b issue-<number> main
 ```
 
-## Phase 1: RED
+既に同名のブランチがある場合は `git checkout issue-<number>` で切り替える。
 
-1. まず失敗するテストを書く
-2. 追加するのは、今から実装する 1 振る舞いだけに絞る
-3. bug fix の場合は再現テストを先に置く
+### 6. 依存関係
 
-## Phase 2: GREEN
+```bash
+bun install
+```
 
-1. 直前の RED を通す最小限のコードを書く
-2. 横スライスで広げず、1 つずつ完了させる
-3. CLI・config・DB・progress の境界では入力を必ず検証する
+---
 
-## Phase 3: REFACTOR
+## Phase 1: TDD 開発
 
-1. 全テストが GREEN になってからだけ整理する
-2. 責務分離、命名、重複除去を優先する
-3. 仕様を広げる変更はこのフェーズで混ぜない
+### 1-1. Planning
 
-## Phase 4: Quality Gate
+- 公開インターフェースと優先テスト対象を確認する
+- テスト戦略を決める
 
-必ず実行する:
+### 1-2. Tracer Bullet
+
+- 1つのテストを書いて RED を確認する
+- そのテストを通す最小限のコードを書いて GREEN にする
+
+### 1-3. Incremental Loop
+
+- 残りの振る舞いを 1 つずつ RED → GREEN で進める
+- 横スライス禁止
+- 各サイクルでテストを実行して状態を確認する
+
+### 1-4. Refactor
+
+- 全テスト GREEN 後にのみリファクタする
+- リファクタ後に回帰がないことを確認する
+
+### 1-5. Quality Gate
 
 ```bash
 bun run test
@@ -56,55 +69,114 @@ bun run typecheck
 bun run lint
 ```
 
-必要なら追加で:
+---
+
+## Phase 2: エージェントレビュー
+
+### 2-0. 規模判定
 
 ```bash
-bun run dev --help
+git diff HEAD --stat
+git diff HEAD --name-status --find-renames
 ```
 
-## Phase 5: Self Review
+### 2-1. 必須レビュー
 
-1. `git diff --stat`
-2. `git diff --name-status --find-renames`
-3. 差分を見て、次を確認する
-   - Issue の受け入れ基準を満たしているか
-   - `CLAUDE.md` の不変ルールを破っていないか
-   - 余計な変更を混ぜていないか
-   - progress / config / DB の責務境界が崩れていないか
+- `code-simplifier:code-simplifier`
+- `codex-review`
 
-## Phase 6: Issue Update
+### 2-2. レビュー基準
 
-Issue が完了したら GitHub 側に最低限これを残す:
+- 一般的なコード品質・保守性: `code-simplifier:code-simplifier`
+- バグ、ロジック、規約準拠: `.claude/skills/codex-review/SKILL.md`
+- セキュリティ: `.claude/rules/security.md` と `CLAUDE.md` の Known Pitfalls
 
-- 実装サマリー
-- 実行した確認コマンド
-- 必要なら残課題
-- PR URL
+---
 
-親 Issue にチェックリストがある場合は更新する。
+## Phase 3: レビュー結果の検討
 
-## Phase 7: Commit / PR
+1. レビュー結果を要約する
+2. 指摘事項を `必須 / 推奨 / 任意` に分類する
+3. 対応方針を確認する
 
-通常の Issue 作業ではここまで進める。
+---
 
-1. コミット前に Quality Gate を再実行する
-2. Issue 番号が追えるコミットメッセージにする
-3. branch を push する
-4. PR を作成する
-5. PR には Issue へのリンク、変更サマリー、実行コマンドを含める
+## Phase 4: 修正 & 再レビュー
+
+1. 選択した指摘事項を修正する
+2. Quality Gate を再実行する
+3. 必須レビューを再実行する
+4. 新たな指摘がなければ次へ進む
+5. 最大 3 ループまで
+
+---
+
+## Phase 5: コミット & PR 作成
+
+### 5-1. コミット
+1. Issue 番号を含むコミットメッセージにする
+2. 作業単位ごとに意味のあるコミットに分割する
+
+### 5-2. ローカル CI 再現チェック
 
 ```bash
-git push -u origin issue-<number>-<short-slug>
+bun run test && bun run typecheck && bun run lint
+```
+
+### 5-3. Push
+
+```bash
+git push -u origin issue-<number>
+```
+
+リモートへ push して作業履歴を残す。
+
+### 5-4. PR 作成
+
+```bash
 gh pr create
 ```
 
-## Repository Notes
+PR 本文には最低限以下を含める。
 
-- Runtime は Bun を第一候補とする
-- コードは極力 Node 互換に寄せる
-- テストは Vitest、lint/format は Biome
-- state の正本は files + local DB
-- advanced logic は CLI / TypeScript 側に置く
-- skill 側は workflow 制御と handover に寄せる
-- `any` 禁止、`enum` 禁止、default export 禁止
-- exported function には explicit return type を付ける
+- `Closes #<number>`
+- 変更サマリー
+- 実行したテスト
+- レビューで対応した主な指摘
+
+### 5-5. Issue クローズ
+
+Issue を close してよいのは、以下をすべて満たしたときだけ。
+
+- 受け入れ基準を満たしている
+- 必須レビューを通している
+- テスト / typecheck / lint が完了している
+- live E2E が必要な issue は、その検証も完了している
+- PR を作成済みである
+- close 理由が PR または Issue コメントから辿れる
+
+Issue には最低限以下を記録する。
+
+- 実装サマリー
+- 実行したテスト
+- レビューで対応した主な指摘
+- PR URL
+- 残課題があれば派生 Issue
+
+### 5-6. 完了報告
+
+- PR URL
+- 追加/変更したファイル
+- テスト結果
+- 対応したレビュー指摘
+
+---
+
+## Phase 6: 学びの記録
+
+再利用価値のある知見があれば `CLAUDE.md` の `Known Pitfalls` への追記を検討する。
+
+
+## 注意事項
+- `as` キャストは Branded Type 生成関数内のみ
+- `any` 禁止、`!` 禁止

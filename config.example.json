@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "repositoryRoot": ".",
+  "scmProvider": "auto",
+  "defaultLanguage": "ja",
+  "paths": {
+    "database": "exploratory-testing.db",
+    "progressDirectory": ".exploratory-testing/progress",
+    "progressSummary": ".exploratory-testing/progress/progress-summary.md",
+    "artifactsDirectory": "output"
+  }
+}

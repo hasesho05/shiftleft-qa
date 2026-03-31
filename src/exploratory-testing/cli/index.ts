@@ -1,0 +1,187 @@
+import { readFile } from "node:fs/promises";
+
+import { cac } from "cac";
+
+import { progressStatusSchema } from "../models/progress";
+import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
+import { readPluginManifest } from "../tools/manifest";
+import { writeProgressSummary, writeStepHandover } from "../tools/progress";
+import {
+  initializeDatabaseFromConfig,
+  initializeWorkspace,
+} from "../tools/setup";
+
+type WorkspaceCommandOptions = {
+  readonly config?: string;
+  readonly manifest?: string;
+};
+
+type HandoverCommandOptions = WorkspaceCommandOptions & {
+  readonly step?: string;
+  readonly status?: string;
+  readonly summary?: string;
+  readonly nextStep?: string;
+  readonly body?: string;
+  readonly bodyFile?: string;
+};
+
+const cli = cac("exploratory-testing");
+
+cli.command("doctor", "Check the local development environment").action(() => {
+  const report = createEnvironmentReport();
+
+  if (report.runtime.bunVersion) {
+    console.log(`bun ${report.runtime.bunVersion}`);
+  }
+  if (report.runtime.nodeVersion) {
+    console.log(`node ${report.runtime.nodeVersion}`);
+  }
+
+  let hasMissingRequiredTool = false;
+
+  for (const tool of report.tools) {
+    const status = getToolStatus(tool);
+    const requirement = tool.required ? "required" : "optional";
+    const suffix = tool.version ? ` (${tool.version})` : "";
+    console.log(`${status} ${tool.name} [${requirement}]${suffix}`);
+
+    if (tool.required && status === "missing") {
+      hasMissingRequiredTool = true;
+    }
+  }
+
+  if (hasMissingRequiredTool) {
+    process.exitCode = 1;
+  }
+});
+
+cli
+  .command("manifest", "Read and validate the plugin manifest")
+  .option("--path <manifestPath>", "Path to plugin.json")
+  .action(async (options) => {
+    const manifest = await readPluginManifest(options.path);
+    console.log(JSON.stringify(manifest, null, 2));
+  });
+
+cli
+  .command("setup", "Initialize config, database, and progress artifacts")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .action(async (options: WorkspaceCommandOptions) => {
+    const result = await initializeWorkspace(options.config, options.manifest);
+
+    emitJson({
+      createdConfig: result.createdConfig,
+      configPath: result.config.configPath,
+      databasePath: result.databasePath,
+      progressDirectory: result.progressDirectory,
+      progressSummaryPath: result.progressSummaryPath,
+      artifactsDirectory: result.artifactsDirectory,
+      setupProgressPath: result.setupProgressPath,
+      currentStep: result.currentStep,
+      journalMode: result.journalMode,
+      foreignKeys: result.foreignKeys,
+    });
+  });
+
+cli
+  .command("db init", "Initialize the SQLite workspace database")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .action(async (options: WorkspaceCommandOptions) => {
+    const result = await initializeDatabaseFromConfig(
+      options.config,
+      options.manifest,
+    );
+
+    emitJson({
+      createdConfig: result.createdConfig,
+      configPath: result.config.configPath,
+      databasePath: result.databasePath,
+      journalMode: result.journalMode,
+      foreignKeys: result.foreignKeys,
+    });
+  });
+
+cli
+  .command("progress summary", "Regenerate progress-summary.md from the DB")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .action(async (options: WorkspaceCommandOptions) => {
+    const result = await writeProgressSummary(options.config, options.manifest);
+
+    emitJson({
+      filePath: result.filePath,
+      currentStep: result.currentStep,
+      steps: result.snapshots.length,
+      completedSteps: result.snapshots.filter(
+        (snapshot) =>
+          snapshot.status === "completed" || snapshot.status === "skipped",
+      ).length,
+    });
+  });
+
+cli
+  .command("progress handover", "Write a step handover document and sync it")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--step <stepName>", "Workflow step name")
+  .option(
+    "--status <status>",
+    "pending | in_progress | completed | interrupted | failed | skipped",
+  )
+  .option("--summary <summary>", "Short summary for the handover")
+  .option("--next-step <nextStep>", "Next workflow step name")
+  .option("--body <body>", "Inline markdown body for the handover document")
+  .option("--body-file <bodyFile>", "Path to a markdown body file")
+  .action(async (options: HandoverCommandOptions) => {
+    if (!options.step || !options.status || !options.summary) {
+      throw new Error(
+        "The --step, --status, and --summary options are required.",
+      );
+    }
+
+    const body = await readBodyOption(options.body, options.bodyFile);
+    const status = progressStatusSchema.parse(options.status);
+    const result = await writeStepHandover(
+      {
+        stepName: options.step,
+        status,
+        summary: options.summary,
+        nextStep: options.nextStep,
+        body,
+      },
+      options.config,
+      options.manifest,
+    );
+
+    emitJson({
+      filePath: result.filePath,
+      step: result.snapshot.stepName,
+      status: result.snapshot.status,
+      nextStep: result.snapshot.nextStep,
+      updatedAt: result.snapshot.updatedAt,
+    });
+  });
+
+cli.help();
+cli.parse();
+
+function emitJson(payload: unknown): void {
+  console.log(JSON.stringify(payload, null, 2));
+}
+
+async function readBodyOption(
+  inlineBody: string | undefined,
+  bodyFile: string | undefined,
+): Promise<string | null> {
+  if (inlineBody && bodyFile) {
+    throw new Error("Use either --body or --body-file, but not both.");
+  }
+
+  if (bodyFile) {
+    return readFile(bodyFile, "utf8");
+  }
+
+  return inlineBody ?? null;
+}

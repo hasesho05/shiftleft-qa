@@ -72,6 +72,20 @@ CREATE TABLE IF NOT EXISTS pr_intakes (
   UNIQUE (provider, repository, pr_number, head_sha)
 );
 
+CREATE TABLE IF NOT EXISTS change_analyses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pr_intake_id INTEGER NOT NULL UNIQUE
+    REFERENCES pr_intakes(id)
+    ON DELETE CASCADE,
+  file_analyses_json TEXT NOT NULL DEFAULT '[]',
+  related_codes_json TEXT NOT NULL DEFAULT '[]',
+  viewpoint_seeds_json TEXT NOT NULL DEFAULT '[]',
+  summary TEXT NOT NULL,
+  analyzed_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_step_progress_status
   ON step_progress(status);
 

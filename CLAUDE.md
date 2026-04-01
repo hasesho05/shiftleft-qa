@@ -205,6 +205,10 @@ CLI (`cli/index.ts`) に provider 判定や fetch ロジックを直接書かな
 
 `gh pr view --json field1,field2,...` は1回の呼び出しで複数フィールドを取得できる。PR metadata / files / reviews を個別に3回呼ぶ必要はない。
 
+### SCM 由来のパスは posix で操作する
+
+`changedFiles[].path` など SCM（git / gh）から取得したファイルパスは常に `/` 区切り。`node:path` の `join()` や `dirname()` は OS 依存でバックスラッシュを生む可能性がある。SCM パスを扱う関数では `node:path/posix` を使うこと。
+
 ### standalone function type は禁止
 
 AGENT.md に明記されている。`type Handler = (input: Input) => Output` は書かない。`Parameters<typeof fn>[0]` のような間接参照も避け、名前付き型を直接 import する。ルールは `.claude/rules/no-standalone-function-types.md` にも定義済み。

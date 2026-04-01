@@ -11,8 +11,10 @@ import {
   findPrIntake,
   saveTestMapping,
 } from "../db/workspace-repository";
+import type { ChangeCategory } from "../models/change-analysis";
 import type { ResolvedPluginConfig } from "../models/config";
 import type {
+  CoverageAspect,
   TestAsset,
   TestMappingResult,
   TestSummary,
@@ -73,7 +75,10 @@ export async function runMapTestsFromAnalysis(
   config: ResolvedPluginConfig,
 ): Promise<MapTestsResult> {
   const testAssets = findTestAssets(prIntake.changedFiles);
-  const testSummaries = buildInitialTestSummaries(testAssets);
+  const testSummaries = buildInitialTestSummaries(
+    testAssets,
+    changeAnalysis.fileAnalyses,
+  );
   const coverageGapMap = buildCoverageGapMap(
     changeAnalysis.fileAnalyses,
     testAssets,
@@ -106,16 +111,25 @@ export async function runMapTestsFromAnalysis(
 
 function buildInitialTestSummaries(
   testAssets: readonly TestAsset[],
+  fileAnalyses: PersistedChangeAnalysis["fileAnalyses"],
 ): readonly TestSummary[] {
-  // Initial summaries with no covered aspects — these are candidates that
-  // haven't been analyzed yet. The skill layer will enrich these summaries
-  // by reading actual test file contents.
-  return testAssets.map((asset) => ({
-    testAssetPath: asset.path,
-    layer: asset.layer,
-    coveredAspects: [],
-    description: `Candidate ${asset.layer} test for ${asset.relatedTo.join(", ")}`,
-  }));
+  const categoriesByFile = new Map(
+    fileAnalyses.map((analysis) => [
+      analysis.path,
+      analysis.categories.map((category) => category.category),
+    ]),
+  );
+
+  return testAssets.map((asset) => {
+    const coveredAspects = inferCoveredAspects(asset, categoriesByFile);
+    return {
+      testAssetPath: asset.path,
+      layer: asset.layer,
+      coveredAspects,
+      coverageConfidence: "inferred",
+      description: `Heuristic ${asset.layer} candidate for ${asset.relatedTo.join(", ")}`,
+    };
+  });
 }
 
 function buildHandoverBody(mapping: PersistedTestMapping): string {
@@ -182,4 +196,73 @@ function buildHandoverBody(mapping: PersistedTestMapping): string {
 
 function escapePipe(text: string): string {
   return text.replace(/\|/g, "\\|");
+}
+
+function inferCoveredAspects(
+  asset: TestAsset,
+  categoriesByFile: ReadonlyMap<string, readonly ChangeCategory[]>,
+): CoverageAspect[] {
+  const aspects = new Set<CoverageAspect>();
+
+  switch (asset.layer) {
+    case "unit":
+      aspects.add("happy-path");
+      aspects.add("error-path");
+      break;
+    case "e2e":
+      aspects.add("happy-path");
+      aspects.add("error-path");
+      aspects.add("state-transition");
+      break;
+    case "visual":
+    case "storybook":
+      aspects.add("happy-path");
+      break;
+    case "api":
+      aspects.add("happy-path");
+      aspects.add("error-path");
+      aspects.add("boundary");
+      break;
+  }
+
+  for (const relatedFile of asset.relatedTo) {
+    const categories = categoriesByFile.get(relatedFile) ?? [];
+
+    if (
+      categories.some((category) =>
+        ["validation", "api", "schema", "ui"].includes(category),
+      )
+    ) {
+      aspects.add("boundary");
+    }
+    if (
+      categories.some((category) =>
+        ["permission", "feature-flag"].includes(category),
+      )
+    ) {
+      aspects.add("permission");
+    }
+    if (
+      categories.some((category) =>
+        ["state-transition", "async", "feature-flag"].includes(category),
+      )
+    ) {
+      aspects.add("state-transition");
+    }
+    if (
+      categories.some((category) =>
+        [
+          "async",
+          "cross-service",
+          "schema",
+          "shared-component",
+          "api",
+        ].includes(category),
+      )
+    ) {
+      aspects.add("mock-fixture");
+    }
+  }
+
+  return [...aspects];
 }

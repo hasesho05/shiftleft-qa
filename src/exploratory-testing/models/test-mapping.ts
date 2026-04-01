@@ -31,6 +31,17 @@ export const explorationPrioritySchema = z.enum(["high", "medium", "low"]);
 
 export type ExplorationPriority = z.infer<typeof explorationPrioritySchema>;
 
+export const coverageConfidenceSchema = z.enum(["confirmed", "inferred"]);
+
+export type CoverageConfidence = z.infer<typeof coverageConfidenceSchema>;
+
+/** Numeric ordering for ExplorationPriority, usable in comparisons and sorts. */
+export const EXPLORATION_PRIORITY_ORDER: Record<ExplorationPriority, number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
 export const testAssetSchema = z.object({
   path: z.string().min(1),
   layer: testLayerSchema,
@@ -44,6 +55,7 @@ export const testSummarySchema = z.object({
   testAssetPath: z.string().min(1),
   layer: testLayerSchema,
   coveredAspects: z.array(coverageAspectSchema),
+  coverageConfidence: coverageConfidenceSchema.default("confirmed"),
   description: z.string().min(1),
 });
 

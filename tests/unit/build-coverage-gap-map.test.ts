@@ -36,11 +36,13 @@ function makeTestSummary(
   testAssetPath: string,
   layer: TestSummary["layer"],
   coveredAspects: TestSummary["coveredAspects"],
+  coverageConfidence: TestSummary["coverageConfidence"] = "confirmed",
 ): TestSummary {
   return {
     testAssetPath,
     layer,
     coveredAspects,
+    coverageConfidence,
     description: "test summary",
   };
 }
@@ -94,7 +96,35 @@ describe("buildCoverageGapMap", () => {
     expect(permission?.explorationPriority).toBe("high");
   });
 
-  it("generates gap entries for all 6 coverage aspects per file", () => {
+  it("marks inferred coverage as partial", () => {
+    const fileAnalyses = [
+      makeFileAnalysis("src/api/users.ts", [
+        { category: "api", confidence: 0.8, reason: "API route" },
+      ]),
+    ];
+    const testAssets = [
+      makeTestAsset("tests/api/users.test.ts", "api", ["src/api/users.ts"]),
+    ];
+    const testSummaries = [
+      makeTestSummary(
+        "tests/api/users.test.ts",
+        "api",
+        ["happy-path", "error-path", "boundary"],
+        "inferred",
+      ),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+    const boundary = gaps.find(
+      (gap) =>
+        gap.changedFilePath === "src/api/users.ts" && gap.aspect === "boundary",
+    );
+
+    expect(boundary?.status).toBe("partial");
+    expect(boundary?.explorationPriority).toBe("medium");
+  });
+
+  it("limits aspects to those relevant to the change categories", () => {
     const fileAnalyses = [makeFileAnalysis("src/foo.ts")];
     const gaps = buildCoverageGapMap(fileAnalyses, [], []);
 
@@ -110,6 +140,22 @@ describe("buildCoverageGapMap", () => {
       "permission",
       "state-transition",
     ]);
+  });
+
+  it("reduces irrelevant aspects for categorized files", () => {
+    const fileAnalyses = [
+      makeFileAnalysis("src/auth.ts", [
+        { category: "permission", confidence: 0.9, reason: "auth" },
+      ]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, [], []);
+    const aspects = gaps
+      .filter((gap) => gap.changedFilePath === "src/auth.ts")
+      .map((gap) => gap.aspect)
+      .sort();
+
+    expect(aspects).toEqual(["error-path", "happy-path", "permission"]);
   });
 
   it("sets all uncovered gaps to high priority when no tests exist", () => {

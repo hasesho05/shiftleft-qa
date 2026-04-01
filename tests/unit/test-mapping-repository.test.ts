@@ -89,6 +89,7 @@ function createSampleTestMapping(
         testAssetPath: "tests/unit/auth.test.ts",
         layer: "unit",
         coveredAspects: ["happy-path", "error-path"],
+        coverageConfidence: "confirmed",
         description: "Tests login and logout flows",
       },
     ],
@@ -215,6 +216,7 @@ describe("test mapping repository", () => {
       "happy-path",
       "error-path",
     ]);
+    expect(found?.testSummaries[0].coverageConfidence).toBe("confirmed");
     expect(found?.coverageGapMap[0].status).toBe("covered");
     expect(found?.coverageGapMap[1].explorationPriority).toBe("high");
   });

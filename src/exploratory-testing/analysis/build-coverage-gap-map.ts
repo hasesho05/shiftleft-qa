@@ -1,6 +1,7 @@
 import type { FileChangeAnalysis } from "../models/change-analysis";
 import type {
   CoverageAspect,
+  CoverageConfidence,
   CoverageGapEntry,
   ExplorationPriority,
   TestAsset,
@@ -53,24 +54,38 @@ export function buildCoverageGapMap(
     const relatedSummaries = relatedAssets.flatMap(
       (a) => summariesByAsset.get(a.path) ?? [],
     );
+    const applicableAspects = getApplicableAspects(file);
 
-    for (const aspect of ALL_ASPECTS) {
-      const coveringTests = relatedSummaries
-        .filter((s) => s.coveredAspects.includes(aspect))
-        .map((s) => s.testAssetPath);
-
-      // "partial" is reserved for the assess-gaps step, which enriches
-      // test summaries by reading actual test content and may upgrade
-      // entries from "uncovered" to "partial" when some aspects are
-      // only superficially covered.
-      const status = coveringTests.length > 0 ? "covered" : "uncovered";
+    for (const aspect of applicableAspects) {
+      const confirmedCoverage = getCoveringTests(
+        relatedSummaries,
+        aspect,
+        "confirmed",
+      );
+      const inferredCoverage = getCoveringTests(
+        relatedSummaries,
+        aspect,
+        "inferred",
+      );
+      const status =
+        confirmedCoverage.length > 0
+          ? "covered"
+          : inferredCoverage.length > 0
+            ? "partial"
+            : "uncovered";
       const explorationPriority = derivePriority(status);
+      const coveredBy =
+        status === "covered"
+          ? confirmedCoverage
+          : status === "partial"
+            ? inferredCoverage
+            : [];
 
       entries.push({
         changedFilePath: file.path,
         aspect,
         status,
-        coveredBy: coveringTests,
+        coveredBy,
         explorationPriority,
       });
     }
@@ -97,4 +112,66 @@ function derivePriority(
     case "uncovered":
       return "high";
   }
+}
+
+function getCoveringTests(
+  summaries: readonly TestSummary[],
+  aspect: CoverageAspect,
+  confidence: CoverageConfidence,
+): string[] {
+  return summaries
+    .filter(
+      (summary) =>
+        summary.coveredAspects.includes(aspect) &&
+        summary.coverageConfidence === confidence,
+    )
+    .map((summary) => summary.testAssetPath);
+}
+
+function getApplicableAspects(
+  file: FileChangeAnalysis,
+): readonly CoverageAspect[] {
+  const aspects = new Set<CoverageAspect>(["happy-path", "error-path"]);
+  const categories = new Set(
+    file.categories.map((category) => category.category),
+  );
+
+  if (hasAnyCategory(categories, ["validation", "api", "schema", "ui"])) {
+    aspects.add("boundary");
+  }
+
+  if (hasAnyCategory(categories, ["permission", "feature-flag"])) {
+    aspects.add("permission");
+  }
+
+  if (
+    hasAnyCategory(categories, ["state-transition", "async", "feature-flag"])
+  ) {
+    aspects.add("state-transition");
+  }
+
+  if (
+    hasAnyCategory(categories, [
+      "async",
+      "cross-service",
+      "schema",
+      "shared-component",
+      "api",
+    ])
+  ) {
+    aspects.add("mock-fixture");
+  }
+
+  if (aspects.size === 2 && file.categories.length === 0) {
+    return ALL_ASPECTS;
+  }
+
+  return [...aspects];
+}
+
+function hasAnyCategory(
+  categories: ReadonlySet<FileChangeAnalysis["categories"][number]["category"]>,
+  targets: readonly FileChangeAnalysis["categories"][number]["category"][],
+): boolean {
+  return targets.some((target) => categories.has(target));
 }

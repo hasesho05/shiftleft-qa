@@ -182,6 +182,8 @@ Issue #7 完了時点:
 
 Issue #2 実装時に踏んだ落とし穴。同じミスを繰り返さないための記録。
 
+Issue #9 / #3 実装時にも、探索出力の品質に直結する落とし穴が見つかった。後続 Issue でも必ず守ること。
+
 ### ResolvedPluginConfig のパス使い分け
 
 - `config.repositoryRoot` — config.json に書かれた**生の値**（多くの場合 `"."`）
@@ -212,6 +214,134 @@ CLI (`cli/index.ts`) に provider 判定や fetch ロジックを直接書かな
 ### standalone function type は禁止
 
 AGENT.md に明記されている。`type Handler = (input: Input) => Output` は書かない。`Parameters<typeof fn>[0]` のような間接参照も避け、名前付き型を直接 import する。ルールは `.claude/rules/no-standalone-function-types.md` にも定義済み。
+
+### Candidate test asset は coverage 済みの証拠ではない
+
+`findTestAssets()` が返すのは「関連候補」であって、保証済みテストの確定ではない。  
+`tests/unit/foo.test.ts` のような候補パスが見つかっただけで `covered` にしてはいけない。
+
+- 候補ベースの `testSummary` は `coverageConfidence: "inferred"` にする
+- 実際にテスト内容を読んで保証観点を確認したときだけ `coverageConfidence: "confirmed"` にする
+- `coverageGapMap` では
+  - `confirmed` がある場合だけ `covered`
+  - `inferred` のみある場合は `partial`
+  - 何もなければ `uncovered`
+
+これを守らないと、Gap Map が「全部 covered」または「全部 uncovered」に崩れて後続の risk analysis が無意味になる。
+
+### Coverage Gap は変更カテゴリに応じて絞る
+
+各 changed file に対して常に全 aspect を並べるとノイズが増える。  
+`permission` 変更でもないのに permission gap を出す、`state-transition` と無関係なのに state-transition gap を出す、というのは避ける。
+
+- 最低限 `happy-path` と `error-path` は評価する
+- `boundary`, `permission`, `state-transition`, `mock-fixture` は change category に応じて applicable な時だけ出す
+- 分類根拠は `discover-context` の `fileAnalyses[].categories` から引く
+
+カテゴリ未分類のファイルだけ、保守的に全 aspect を評価してよい。
+
+### assess-gaps は framework 一覧ではなく partial exploration を出す
+
+`#3` の成果物は「フレームワーク選定結果の一覧」で終わらせない。  
+後続の charter 生成で使えるよう、gap 起点の partial exploration theme を必ず作ること。
+
+- framework-based theme だけで終わらせない
+- `error-path`, `permission`, `boundary` など gap aspect ごとの theme を出す
+- 1 theme は 1 テーマに絞る
+- `frameworks`, `targetFiles`, `riskLevel`, `estimatedMinutes` を持たせる
+
+要するに「読むための分析結果」ではなく「次の step がそのまま実行計画に落とせる粒度」にする。
+
+### exploration theme 生成で coverage gap 引数を捨てない
+
+`generateExplorationThemes(riskScores, frameworkSelections, coverageGaps)` の第3引数は未使用にしない。  
+gap を使わない theme 生成は partial exploration を作れず、`#6` の session charter が粗くなる。
+
+### 長い repository/tool テストは timeout 前提で設計する
+
+このリポジトリの Vitest は `bun:sqlite` shim 経由で `sqlite3` CLI を多用するため、repository/tool テストは速くない。  
+数回の workspace 初期化、DB 書き込み、progress file 更新を含むテストは 5 秒を超えることがある。
+
+- `vitest.config.ts` の `testTimeout` / `hookTimeout` を不用意に短くしない
+- idempotency テストでは cleanup race を避ける
+- 「遅いけど正しい」テストを、短すぎる timeout で赤くしない
+
+テストが落ちたら実装バグだけでなく timeout 設定も疑うこと。
+
+### CLI の machine output を壊さない
+
+このリポジトリの CLI は後続 step や skill から機械的に読まれる前提。  
+`cli/index.ts` の各 command は最後に `emitJson()` で返しているので、構造化出力を壊す人間向けログを混ぜないこと。
+
+- `console.log("starting...")` のようなデバッグ出力を command 本体に足さない
+- machine output は JSON だけにする
+- 人間向けの説明は progress/handover 文書に書く
+
+JSON 契約を壊すと skill 側の再現性が落ちる。
+
+### handover の `summary` と本文を手抜きしない
+
+`writeStepHandoverFromConfig()` に渡す `summary` は、単なる「done」ではなく次 step が判断材料にできる具体値を入れること。
+
+- 件数
+- 主要カテゴリ
+- missing layer 数
+- selected framework 数
+- generated theme 数
+
+本文の `## Next step` も workflow と一致させる。summary が曖昧だと progress-summary は更新されても、再開時の判断材料として弱い。
+
+### Markdown table に入る文字列は必ず escape する
+
+handover 本文では file path や reason を Markdown table に流し込むことが多い。  
+`|` を含む path や説明文をそのまま出すと table が壊れる。
+
+- table cell に入れる path / reason / coveredBy は `escapePipe()` 相当で処理する
+- change analysis, map-tests, assess-gaps の handover では特に注意する
+
+progress file は人間が読む成果物でもあるので、壊れた Markdown を残さないこと。
+
+### `find*` 系 repository は「最新1件を取る」前提を崩さない
+
+`findPrIntake()` は `provider + repository + pr_number` で最新の 1 件を返す。  
+`head_sha` ごとに履歴を持てる設計なので、同じ PR 番号でも過去レコードが残る。
+
+- 「同じ PR は常に 1 レコード」と思い込まない
+- 冪等性キーと lookup キーは分けて考える
+- 後続 step は基本的に「最新 intake にぶら下がる analysis/mapping」を扱う
+
+履歴を潰してしまうと再実行や head 更新時の挙動が壊れる。
+
+### schema を変えたら repository と model と test を同時に見る
+
+このリポジトリは JSON カラムを Zod で round-trip 検証している。  
+DB schema だけ足して終わると、repository / model / test のどこかがすぐズレる。
+
+- `db/schema.ts`
+- `db/workspace-repository.ts`
+- `models/*.ts`
+- repository test
+- tool test
+
+最低でもこの 5 箇所はセットで確認すること。
+
+### workflow step を増減したら progress 系も一緒に確認する
+
+step 定義は `WORKFLOW_SKILLS` だけでは完結しない。  
+step 名や順序を変えたら、`createStepProgressFilename()`, `detectCurrentStep()`, handover の `nextStep`, setup 後の current step まで見ること。
+
+`workflow.ts` だけ更新して progress 側を見落とすと、summary と handover が不整合になる。
+
+### heuristic は「高精度の断定」ではなく「保守的な推定」に倒す
+
+このプラグインの初期実装は rules-first だが、rules は万能ではない。  
+分類や test mapping で迷うときは、
+
+- 断定して `covered` にするより `partial`
+- 無関係な aspect を増やすより applicable scope を絞る
+- 強い理由がないのに high confidence を付けない
+
+の方が安全。探索プランニング用途では、偽陽性の安心感より偽陰性寄りの慎重さの方がマシ。
 
 ## 深い仕様を確認したいとき
 

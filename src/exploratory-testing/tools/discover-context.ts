@@ -133,7 +133,7 @@ function buildHandoverBody(analysis: PersistedChangeAnalysis): string {
       fa.categories.map((c) => `${c.category}(${c.confidence})`).join(", ") ||
       "—";
     lines.push(
-      `| ${fa.path} | ${fa.status} | ${cats} | +${fa.additions} -${fa.deletions} |`,
+      `| ${fa.path.replace(/\|/g, "\\|")} | ${fa.status} | ${cats} | +${fa.additions} -${fa.deletions} |`,
     );
   }
   lines.push("");

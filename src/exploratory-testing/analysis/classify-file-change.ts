@@ -12,7 +12,7 @@ const PATH_RULES: readonly ClassificationRule[] = [
   // UI
   {
     category: "ui",
-    test: (p) => /\.(tsx|jsx)$/.test(p) && !/\.test\.(tsx|jsx)$/.test(p),
+    test: (p) => /\.(tsx|jsx)$/.test(p) && !/\.(test|spec)\.(tsx|jsx)$/.test(p),
     confidence: 0.8,
     reason: "React/JSX component file",
   },
@@ -39,7 +39,7 @@ const PATH_RULES: readonly ClassificationRule[] = [
     test: (p) =>
       /\/(components|views|pages|layouts)\//i.test(p) &&
       /\.(ts|js)$/.test(p) &&
-      !/\.test\.(ts|js)$/.test(p),
+      !/\.(test|spec)\.(ts|js)$/.test(p),
     confidence: 0.7,
     reason: "File in UI directory",
   },
@@ -153,15 +153,15 @@ const PATH_RULES: readonly ClassificationRule[] = [
   },
   {
     category: "schema",
-    test: (p) => /\.(sql)$/.test(p) && !/\/(migrations?)\//i.test(p),
-    confidence: 0.8,
-    reason: "SQL file (likely schema-related)",
-  },
-  {
-    category: "schema",
     test: (p) => /\/(seeds?|fixtures?)\//i.test(p) && /\.sql$/.test(p),
     confidence: 0.7,
     reason: "Database seed/fixture SQL",
+  },
+  {
+    category: "schema",
+    test: (p) => /\.(sql)$/.test(p) && !/\/(migrations?)\//i.test(p),
+    confidence: 0.8,
+    reason: "SQL file (likely schema-related)",
   },
 
   // Shared component

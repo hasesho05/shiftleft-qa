@@ -42,6 +42,22 @@ describe("classifyFileChange", () => {
       expect(result.some((c) => c.category === "ui")).toBe(true);
     });
 
+    it("excludes .spec.tsx files from ui classification", () => {
+      const result = classifyFileChange(
+        makeFile({ path: "src/components/Button.spec.tsx" }),
+      );
+
+      expect(result.some((c) => c.category === "ui")).toBe(false);
+    });
+
+    it("excludes .spec.ts files in UI directories from ui classification", () => {
+      const result = classifyFileChange(
+        makeFile({ path: "src/components/Button.spec.ts" }),
+      );
+
+      expect(result.some((c) => c.category === "ui")).toBe(false);
+    });
+
     it("classifies Storybook stories as ui", () => {
       const result = classifyFileChange(
         makeFile({ path: "src/components/Button.stories.tsx" }),
@@ -164,6 +180,16 @@ describe("classifyFileChange", () => {
       );
 
       expect(result.some((c) => c.category === "schema")).toBe(true);
+    });
+
+    it("classifies seed SQL with specific reason over generic SQL", () => {
+      const result = classifyFileChange(
+        makeFile({ path: "db/seeds/001_users.sql" }),
+      );
+
+      const schemaCategory = result.find((c) => c.category === "schema");
+      expect(schemaCategory).toBeDefined();
+      expect(schemaCategory?.reason).toBe("Database seed/fixture SQL");
     });
   });
 

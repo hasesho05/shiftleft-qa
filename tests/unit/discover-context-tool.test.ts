@@ -194,6 +194,35 @@ describe("runDiscoverContextFromIntake", () => {
     expect(viewpoints).toContain("architecture-cross-cutting");
   });
 
+  it("escapes pipe characters in file paths for handover markdown", async () => {
+    const workspace = await setupWorkspace();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const metadata: PrMetadata = {
+      ...createSampleMetadata(),
+      changedFiles: [
+        {
+          path: "src/utils/foo|bar.ts",
+          status: "added",
+          additions: 5,
+          deletions: 0,
+          previousPath: null,
+        },
+      ],
+    };
+    const prIntake = savePrIntake(workspace.databasePath, metadata);
+
+    const result = await runDiscoverContextFromIntake(prIntake, config);
+
+    const handoverDoc = await readStepHandoverDocument(
+      result.handover.filePath,
+    );
+    expect(handoverDoc.body).toContain("foo\\|bar.ts");
+    expect(handoverDoc.body).not.toContain("| src/utils/foo|bar.ts |");
+  });
+
   it("is idempotent for same PR intake", async () => {
     const workspace = await setupWorkspace();
     const config = await readPluginConfig(

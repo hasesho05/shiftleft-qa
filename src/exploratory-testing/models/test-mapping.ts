@@ -31,6 +31,13 @@ export const explorationPrioritySchema = z.enum(["high", "medium", "low"]);
 
 export type ExplorationPriority = z.infer<typeof explorationPrioritySchema>;
 
+/** Numeric ordering for ExplorationPriority, usable in comparisons and sorts. */
+export const EXPLORATION_PRIORITY_ORDER: Record<ExplorationPriority, number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
 export const testAssetSchema = z.object({
   path: z.string().min(1),
   layer: testLayerSchema,

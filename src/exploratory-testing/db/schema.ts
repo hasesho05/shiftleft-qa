@@ -109,6 +109,19 @@ CREATE TABLE IF NOT EXISTS test_mappings (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS risk_assessments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  test_mapping_id INTEGER NOT NULL UNIQUE
+    REFERENCES test_mappings(id)
+    ON DELETE CASCADE,
+  risk_scores_json TEXT NOT NULL DEFAULT '[]',
+  framework_selections_json TEXT NOT NULL DEFAULT '[]',
+  exploration_themes_json TEXT NOT NULL DEFAULT '[]',
+  assessed_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_pr_intakes_lookup
   ON pr_intakes(provider, repository, pr_number);
 `;

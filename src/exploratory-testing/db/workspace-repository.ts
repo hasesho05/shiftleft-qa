@@ -22,6 +22,12 @@ import {
   progressStatusSchema,
 } from "../models/progress";
 import {
+  type RiskAssessmentResult,
+  explorationThemeSchema,
+  frameworkSelectionSchema,
+  riskScoreSchema,
+} from "../models/risk-assessment";
+import {
   type TestMappingResult,
   coverageGapEntrySchema,
   testAssetSchema,
@@ -807,6 +813,130 @@ function mapTestMappingRow(row: TestMappingRow): PersistedTestMapping {
       .array(testLayerSchema)
       .parse(JSON.parse(row.missing_layers_json)),
     mappedAt: row.mapped_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// --- Risk Assessment repository ---
+
+export type PersistedRiskAssessment = {
+  readonly id: number;
+  readonly testMappingId: number;
+  readonly riskScores: RiskAssessmentResult["riskScores"];
+  readonly frameworkSelections: RiskAssessmentResult["frameworkSelections"];
+  readonly explorationThemes: RiskAssessmentResult["explorationThemes"];
+  readonly assessedAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type RiskAssessmentRow = {
+  readonly id: number;
+  readonly test_mapping_id: number;
+  readonly risk_scores_json: string;
+  readonly framework_selections_json: string;
+  readonly exploration_themes_json: string;
+  readonly assessed_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export function saveRiskAssessment(
+  databasePath: string,
+  result: RiskAssessmentResult,
+): PersistedRiskAssessment {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO risk_assessments (
+            test_mapping_id, risk_scores_json, framework_selections_json,
+            exploration_themes_json, assessed_at,
+            created_at, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+          ON CONFLICT(test_mapping_id) DO UPDATE SET
+            risk_scores_json = excluded.risk_scores_json,
+            framework_selections_json = excluded.framework_selections_json,
+            exploration_themes_json = excluded.exploration_themes_json,
+            assessed_at = excluded.assessed_at,
+            updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          result.testMappingId,
+          JSON.stringify(result.riskScores),
+          JSON.stringify(result.frameworkSelections),
+          JSON.stringify(result.explorationThemes),
+          result.assessedAt,
+          timestamp,
+          timestamp,
+        );
+
+      return database
+        .query(
+          `
+          SELECT * FROM risk_assessments
+          WHERE test_mapping_id = ?1
+          `,
+        )
+        .get<RiskAssessmentRow>(result.testMappingId);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist risk assessment for test_mapping_id=${result.testMappingId}`,
+      );
+    }
+
+    return mapRiskAssessmentRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function findRiskAssessment(
+  databasePath: string,
+  testMappingId: number,
+): PersistedRiskAssessment | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query(
+        `
+        SELECT * FROM risk_assessments
+        WHERE test_mapping_id = ?1
+        `,
+      )
+      .get<RiskAssessmentRow>(testMappingId);
+
+    return row ? mapRiskAssessmentRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+function mapRiskAssessmentRow(row: RiskAssessmentRow): PersistedRiskAssessment {
+  return {
+    id: row.id,
+    testMappingId: row.test_mapping_id,
+    riskScores: z
+      .array(riskScoreSchema)
+      .parse(JSON.parse(row.risk_scores_json)),
+    frameworkSelections: z
+      .array(frameworkSelectionSchema)
+      .parse(JSON.parse(row.framework_selections_json)),
+    explorationThemes: z
+      .array(explorationThemeSchema)
+      .parse(JSON.parse(row.exploration_themes_json)),
+    assessedAt: row.assessed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

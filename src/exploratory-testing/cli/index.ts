@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { cac } from "cac";
 
 import { progressStatusSchema } from "../models/progress";
+import { runAssessGaps } from "../tools/assess-gaps";
 import { runDiscoverContext } from "../tools/discover-context";
 import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
 import { readPluginManifest } from "../tools/manifest";
@@ -23,13 +24,7 @@ type PrIntakeCommandOptions = WorkspaceCommandOptions & {
   readonly pr?: number;
 };
 
-type DiscoverContextCommandOptions = WorkspaceCommandOptions & {
-  readonly pr?: number;
-  readonly provider?: string;
-  readonly repository?: string;
-};
-
-type MapTestsCommandOptions = WorkspaceCommandOptions & {
+type PrPipelineCommandOptions = WorkspaceCommandOptions & {
   readonly pr?: number;
   readonly provider?: string;
   readonly repository?: string;
@@ -162,7 +157,7 @@ cli
   .option("--pr <prNumber>", "PR or MR number")
   .option("--provider <provider>", "SCM provider (github or gitlab)")
   .option("--repository <repository>", "Repository in owner/repo format")
-  .action(async (options: DiscoverContextCommandOptions) => {
+  .action(async (options: PrPipelineCommandOptions) => {
     if (!options.pr) {
       throw new Error("The --pr option is required.");
     }
@@ -208,7 +203,7 @@ cli
   .option("--pr <prNumber>", "PR or MR number")
   .option("--provider <provider>", "SCM provider (github or gitlab)")
   .option("--repository <repository>", "Repository in owner/repo format")
-  .action(async (options: MapTestsCommandOptions) => {
+  .action(async (options: PrPipelineCommandOptions) => {
     if (!options.pr) {
       throw new Error("The --pr option is required.");
     }
@@ -234,6 +229,45 @@ cli
       testSummaries: result.persisted.testSummaries.length,
       coverageGapEntries: result.persisted.coverageGapMap.length,
       missingLayers: result.persisted.missingLayers,
+      handoverPath: result.handover.filePath,
+      status: result.handover.snapshot.status,
+    });
+  });
+
+cli
+  .command(
+    "assess-gaps",
+    "Score risk, select frameworks, and generate exploration themes",
+  )
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--pr <prNumber>", "PR or MR number")
+  .option("--provider <provider>", "SCM provider (github or gitlab)")
+  .option("--repository <repository>", "Repository in owner/repo format")
+  .action(async (options: PrPipelineCommandOptions) => {
+    if (!options.pr) {
+      throw new Error("The --pr option is required.");
+    }
+    if (!options.provider) {
+      throw new Error("The --provider option is required.");
+    }
+    if (!options.repository) {
+      throw new Error("The --repository option is required.");
+    }
+
+    const result = await runAssessGaps({
+      prNumber: options.pr,
+      provider: options.provider,
+      repository: options.repository,
+      configPath: options.config,
+      manifestPath: options.manifest,
+    });
+
+    emitJson({
+      testMappingId: result.persisted.testMappingId,
+      riskScores: result.persisted.riskScores.length,
+      frameworkSelections: result.persisted.frameworkSelections.length,
+      explorationThemes: result.persisted.explorationThemes.length,
       handoverPath: result.handover.filePath,
       status: result.handover.snapshot.status,
     });

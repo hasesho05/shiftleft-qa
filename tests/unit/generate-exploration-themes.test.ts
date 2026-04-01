@@ -168,8 +168,41 @@ describe("generateExplorationThemes", () => {
     ];
 
     const themes = generateExplorationThemes(riskScores, selections, gaps);
-    // Should have at least the framework-based theme
-    expect(themes.length).toBeGreaterThanOrEqual(1);
+    expect(themes.length).toBeGreaterThanOrEqual(2);
+    expect(themes.some((theme) => theme.title.includes("error handling"))).toBe(
+      true,
+    );
+    expect(
+      themes.some((theme) => theme.title.includes("permission differences")),
+    ).toBe(true);
+  });
+
+  it("uses related framework selections for gap-focused themes", () => {
+    const riskScores: RiskScore[] = [
+      makeRiskScore({ changedFilePath: "src/store/cart.ts", overallRisk: 0.9 }),
+    ];
+    const selections: FrameworkSelection[] = [
+      makeFrameworkSelection({
+        framework: "state-transition",
+        relevantFiles: ["src/store/cart.ts"],
+        priority: "high",
+      }),
+    ];
+    const gaps: CoverageGapEntry[] = [
+      makeGapEntry({
+        changedFilePath: "src/store/cart.ts",
+        aspect: "state-transition",
+        status: "uncovered",
+      }),
+    ];
+
+    const themes = generateExplorationThemes(riskScores, selections, gaps);
+    const gapTheme = themes.find((theme) =>
+      theme.title.includes("state transitions"),
+    );
+
+    expect(gapTheme).toBeDefined();
+    expect(gapTheme?.frameworks).toContain("state-transition");
   });
 
   it("sets estimatedMinutes to a positive integer", () => {

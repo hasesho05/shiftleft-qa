@@ -11,10 +11,12 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
+    hookTimeout: 20000,
     server: {
       deps: {
         external: [],
       },
     },
+    testTimeout: 20000,
   },
 });

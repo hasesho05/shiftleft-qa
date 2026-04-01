@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   coverageAspectSchema,
+  coverageConfidenceSchema,
   coverageGapEntrySchema,
   testAssetSchema,
   testLayerSchema,
@@ -85,6 +86,7 @@ describe("testSummarySchema", () => {
       testAssetPath: "tests/unit/auth.test.ts",
       layer: "unit",
       coveredAspects: ["happy-path", "error-path"],
+      coverageConfidence: "confirmed",
       description: "Tests login and logout flows",
     };
 
@@ -97,10 +99,33 @@ describe("testSummarySchema", () => {
       testAssetPath: "tests/api/users.test.ts",
       layer: "api",
       coveredAspects: [],
+      coverageConfidence: "inferred",
       description: "API contract tests",
     };
 
     expect(testSummarySchema.parse(input)).toEqual(input);
+  });
+
+  it("defaults coverageConfidence to confirmed", () => {
+    const result = testSummarySchema.parse({
+      testAssetPath: "tests/unit/auth.test.ts",
+      layer: "unit",
+      coveredAspects: ["happy-path"],
+      description: "Tests login flow",
+    });
+
+    expect(result.coverageConfidence).toBe("confirmed");
+  });
+});
+
+describe("coverageConfidenceSchema", () => {
+  it("accepts confirmed and inferred", () => {
+    expect(coverageConfidenceSchema.parse("confirmed")).toBe("confirmed");
+    expect(coverageConfidenceSchema.parse("inferred")).toBe("inferred");
+  });
+
+  it("rejects unknown values", () => {
+    expect(() => coverageConfidenceSchema.parse("guessed")).toThrow();
   });
 });
 
@@ -161,6 +186,7 @@ describe("testMappingResultSchema", () => {
           testAssetPath: "tests/unit/auth.test.ts",
           layer: "unit",
           coveredAspects: ["happy-path"],
+          coverageConfidence: "confirmed",
           description: "Tests login flow",
         },
       ],

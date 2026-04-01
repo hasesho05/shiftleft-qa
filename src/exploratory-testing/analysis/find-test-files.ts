@@ -6,8 +6,7 @@ import type { TestAsset, TestLayer } from "../models/test-mapping";
 export function findTestAssets(
   changedFiles: readonly ChangedFile[],
 ): readonly TestAsset[] {
-  const seen = new Set<string>();
-  const assets: TestAsset[] = [];
+  const assetsMap = new Map<string, TestAsset>();
 
   for (const file of changedFiles) {
     if (isTestFile(file.path)) {
@@ -17,15 +16,30 @@ export function findTestAssets(
     const candidates = inferTestCandidates(file.path);
 
     for (const candidate of candidates) {
-      if (seen.has(candidate.path)) {
-        continue;
+      const existing = assetsMap.get(candidate.path);
+      if (existing) {
+        const merged = mergeRelatedTo(existing.relatedTo, candidate.relatedTo);
+        assetsMap.set(candidate.path, { ...existing, relatedTo: merged });
+      } else {
+        assetsMap.set(candidate.path, candidate);
       }
-      seen.add(candidate.path);
-      assets.push(candidate);
     }
   }
 
-  return assets;
+  return [...assetsMap.values()];
+}
+
+function mergeRelatedTo(
+  existing: readonly string[],
+  incoming: readonly string[],
+): string[] {
+  const merged = [...existing];
+  for (const path of incoming) {
+    if (!merged.includes(path)) {
+      merged.push(path);
+    }
+  }
+  return merged;
 }
 
 function isTestFile(filePath: string): boolean {

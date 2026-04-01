@@ -109,4 +109,33 @@ describe("findTestAssets", () => {
       assets.some((a) => a.path.includes("__tests__/format.test.ts")),
     ).toBe(true);
   });
+
+  it("merges relatedTo when multiple source files share a test candidate", () => {
+    const files = [
+      makeChangedFile("src/middleware/auth.ts"),
+      makeChangedFile("src/services/auth.ts"),
+    ];
+
+    const assets = findTestAssets(files);
+
+    // Both source files generate e2e/auth.spec.ts as a candidate
+    const e2eAsset = assets.find((a) => a.path === "e2e/auth.spec.ts");
+    expect(e2eAsset).toBeDefined();
+    expect(e2eAsset?.relatedTo).toContain("src/middleware/auth.ts");
+    expect(e2eAsset?.relatedTo).toContain("src/services/auth.ts");
+  });
+
+  it("does not duplicate relatedTo entries for the same source file", () => {
+    const files = [
+      makeChangedFile("src/middleware/auth.ts"),
+      makeChangedFile("src/middleware/auth.ts"),
+    ];
+
+    const assets = findTestAssets(files);
+
+    for (const asset of assets) {
+      const unique = [...new Set(asset.relatedTo)];
+      expect(asset.relatedTo.length).toBe(unique.length);
+    }
+  });
 });

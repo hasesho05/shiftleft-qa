@@ -30,14 +30,28 @@ export function buildCoverageGapMap(
   testAssets: readonly TestAsset[],
   testSummaries: readonly TestSummary[],
 ): readonly CoverageGapEntry[] {
+  const assetsByFile = new Map<string, TestAsset[]>();
+  for (const asset of testAssets) {
+    for (const filePath of asset.relatedTo) {
+      const list = assetsByFile.get(filePath) ?? [];
+      list.push(asset);
+      assetsByFile.set(filePath, list);
+    }
+  }
+
+  const summariesByAsset = new Map<string, TestSummary[]>();
+  for (const summary of testSummaries) {
+    const list = summariesByAsset.get(summary.testAssetPath) ?? [];
+    list.push(summary);
+    summariesByAsset.set(summary.testAssetPath, list);
+  }
+
   const entries: CoverageGapEntry[] = [];
 
   for (const file of fileAnalyses) {
-    const relatedAssets = testAssets.filter((a) =>
-      a.relatedTo.includes(file.path),
-    );
-    const relatedSummaries = testSummaries.filter((s) =>
-      relatedAssets.some((a) => a.path === s.testAssetPath),
+    const relatedAssets = assetsByFile.get(file.path) ?? [];
+    const relatedSummaries = relatedAssets.flatMap(
+      (a) => summariesByAsset.get(a.path) ?? [],
     );
 
     for (const aspect of ALL_ASPECTS) {

@@ -6,6 +6,7 @@ import { progressStatusSchema } from "../models/progress";
 import { runAssessGaps } from "../tools/assess-gaps";
 import { runDiscoverContext } from "../tools/discover-context";
 import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
+import { runGenerateCharters } from "../tools/generate-charters";
 import { readPluginManifest } from "../tools/manifest";
 import { runMapTests } from "../tools/map-tests";
 import { runPrIntake } from "../tools/pr-intake";
@@ -268,6 +269,43 @@ cli
       riskScores: result.persisted.riskScores.length,
       frameworkSelections: result.persisted.frameworkSelections.length,
       explorationThemes: result.persisted.explorationThemes.length,
+      handoverPath: result.handover.filePath,
+      status: result.handover.snapshot.status,
+    });
+  });
+
+cli
+  .command(
+    "generate-charters",
+    "Generate executable session charters from exploration themes",
+  )
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--pr <prNumber>", "PR or MR number")
+  .option("--provider <provider>", "SCM provider (github or gitlab)")
+  .option("--repository <repository>", "Repository in owner/repo format")
+  .action(async (options: PrPipelineCommandOptions) => {
+    if (!options.pr) {
+      throw new Error("The --pr option is required.");
+    }
+    if (!options.provider) {
+      throw new Error("The --provider option is required.");
+    }
+    if (!options.repository) {
+      throw new Error("The --repository option is required.");
+    }
+
+    const result = await runGenerateCharters({
+      prNumber: options.pr,
+      provider: options.provider,
+      repository: options.repository,
+      configPath: options.config,
+      manifestPath: options.manifest,
+    });
+
+    emitJson({
+      riskAssessmentId: result.persisted.riskAssessmentId,
+      chartersGenerated: result.persisted.charters.length,
       handoverPath: result.handover.filePath,
       status: result.handover.snapshot.status,
     });

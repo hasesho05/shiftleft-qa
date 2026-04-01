@@ -122,6 +122,17 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS session_charters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  risk_assessment_id INTEGER NOT NULL UNIQUE
+    REFERENCES risk_assessments(id)
+    ON DELETE CASCADE,
+  charters_json TEXT NOT NULL DEFAULT '[]',
+  generated_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_pr_intakes_lookup
   ON pr_intakes(provider, repository, pr_number);
 `;

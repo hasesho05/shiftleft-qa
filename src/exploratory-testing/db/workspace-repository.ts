@@ -28,6 +28,11 @@ import {
   riskScoreSchema,
 } from "../models/risk-assessment";
 import {
+  type SessionCharter,
+  type SessionCharterGenerationResult,
+  sessionCharterSchema,
+} from "../models/session-charter";
+import {
   type TestMappingResult,
   coverageGapEntrySchema,
   testAssetSchema,
@@ -937,6 +942,119 @@ function mapRiskAssessmentRow(row: RiskAssessmentRow): PersistedRiskAssessment {
       .array(explorationThemeSchema)
       .parse(JSON.parse(row.exploration_themes_json)),
     assessedAt: row.assessed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Session Charters
+// ---------------------------------------------------------------------------
+
+export type PersistedSessionCharters = {
+  readonly id: number;
+  readonly riskAssessmentId: number;
+  readonly charters: readonly SessionCharter[];
+  readonly generatedAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type SessionChartersRow = {
+  readonly id: number;
+  readonly risk_assessment_id: number;
+  readonly charters_json: string;
+  readonly generated_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export function saveSessionCharters(
+  databasePath: string,
+  result: SessionCharterGenerationResult,
+): PersistedSessionCharters {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO session_charters (
+            risk_assessment_id, charters_json, generated_at,
+            created_at, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5)
+          ON CONFLICT(risk_assessment_id) DO UPDATE SET
+            charters_json = excluded.charters_json,
+            generated_at = excluded.generated_at,
+            updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          result.riskAssessmentId,
+          JSON.stringify(result.charters),
+          result.generatedAt,
+          timestamp,
+          timestamp,
+        );
+
+      return database
+        .query(
+          `
+          SELECT * FROM session_charters
+          WHERE risk_assessment_id = ?1
+          `,
+        )
+        .get<SessionChartersRow>(result.riskAssessmentId);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist session charters for risk_assessment_id=${result.riskAssessmentId}`,
+      );
+    }
+
+    return mapSessionChartersRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function findSessionCharters(
+  databasePath: string,
+  riskAssessmentId: number,
+): PersistedSessionCharters | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query(
+        `
+        SELECT * FROM session_charters
+        WHERE risk_assessment_id = ?1
+        `,
+      )
+      .get<SessionChartersRow>(riskAssessmentId);
+
+    return row ? mapSessionChartersRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+function mapSessionChartersRow(
+  row: SessionChartersRow,
+): PersistedSessionCharters {
+  return {
+    id: row.id,
+    riskAssessmentId: row.risk_assessment_id,
+    charters: z
+      .array(sessionCharterSchema)
+      .parse(JSON.parse(row.charters_json)),
+    generatedAt: row.generated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

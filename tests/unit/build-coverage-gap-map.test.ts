@@ -1,0 +1,184 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildCoverageGapMap,
+  detectMissingLayers,
+} from "../../src/exploratory-testing/analysis/build-coverage-gap-map";
+import type { FileChangeAnalysis } from "../../src/exploratory-testing/models/change-analysis";
+import type {
+  CoverageGapEntry,
+  TestAsset,
+  TestSummary,
+} from "../../src/exploratory-testing/models/test-mapping";
+
+function makeFileAnalysis(
+  path: string,
+  categories: FileChangeAnalysis["categories"] = [],
+): FileChangeAnalysis {
+  return {
+    path,
+    status: "modified",
+    additions: 10,
+    deletions: 2,
+    categories,
+  };
+}
+
+function makeTestAsset(
+  path: string,
+  layer: TestAsset["layer"],
+  relatedTo: string[],
+): TestAsset {
+  return { path, layer, relatedTo, confidence: 0.8 };
+}
+
+function makeTestSummary(
+  testAssetPath: string,
+  layer: TestSummary["layer"],
+  coveredAspects: TestSummary["coveredAspects"],
+): TestSummary {
+  return {
+    testAssetPath,
+    layer,
+    coveredAspects,
+    description: "test summary",
+  };
+}
+
+describe("buildCoverageGapMap", () => {
+  it("marks aspects as covered when test summaries cover them", () => {
+    const fileAnalyses = [
+      makeFileAnalysis("src/auth.ts", [
+        { category: "permission", confidence: 0.9, reason: "auth" },
+      ]),
+    ];
+    const testAssets = [
+      makeTestAsset("tests/unit/auth.test.ts", "unit", ["src/auth.ts"]),
+    ];
+    const testSummaries = [
+      makeTestSummary("tests/unit/auth.test.ts", "unit", [
+        "happy-path",
+        "error-path",
+      ]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+
+    const happyPath = gaps.find(
+      (g) => g.changedFilePath === "src/auth.ts" && g.aspect === "happy-path",
+    );
+    expect(happyPath?.status).toBe("covered");
+    expect(happyPath?.coveredBy).toContain("tests/unit/auth.test.ts");
+    expect(happyPath?.explorationPriority).toBe("low");
+  });
+
+  it("marks aspects as uncovered when no test covers them", () => {
+    const fileAnalyses = [
+      makeFileAnalysis("src/auth.ts", [
+        { category: "permission", confidence: 0.9, reason: "auth" },
+      ]),
+    ];
+    const testAssets = [
+      makeTestAsset("tests/unit/auth.test.ts", "unit", ["src/auth.ts"]),
+    ];
+    const testSummaries = [
+      makeTestSummary("tests/unit/auth.test.ts", "unit", ["happy-path"]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+
+    const permission = gaps.find(
+      (g) => g.changedFilePath === "src/auth.ts" && g.aspect === "permission",
+    );
+    expect(permission?.status).toBe("uncovered");
+    expect(permission?.explorationPriority).toBe("high");
+  });
+
+  it("generates gap entries for all 6 coverage aspects per file", () => {
+    const fileAnalyses = [makeFileAnalysis("src/foo.ts")];
+    const gaps = buildCoverageGapMap(fileAnalyses, [], []);
+
+    const fooGaps = gaps.filter((g) => g.changedFilePath === "src/foo.ts");
+    expect(fooGaps).toHaveLength(6);
+
+    const aspects = fooGaps.map((g) => g.aspect).sort();
+    expect(aspects).toEqual([
+      "boundary",
+      "error-path",
+      "happy-path",
+      "mock-fixture",
+      "permission",
+      "state-transition",
+    ]);
+  });
+
+  it("sets all uncovered gaps to high priority when no tests exist", () => {
+    const fileAnalyses = [makeFileAnalysis("src/no-test.ts")];
+    const gaps = buildCoverageGapMap(fileAnalyses, [], []);
+
+    for (const gap of gaps) {
+      expect(gap.status).toBe("uncovered");
+      expect(gap.explorationPriority).toBe("high");
+    }
+  });
+
+  it("handles multiple files with different coverage", () => {
+    const fileAnalyses = [
+      makeFileAnalysis("src/a.ts"),
+      makeFileAnalysis("src/b.ts"),
+    ];
+    const testAssets = [
+      makeTestAsset("tests/unit/a.test.ts", "unit", ["src/a.ts"]),
+    ];
+    const testSummaries = [
+      makeTestSummary("tests/unit/a.test.ts", "unit", ["happy-path"]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+
+    const aHappy = gaps.find(
+      (g) => g.changedFilePath === "src/a.ts" && g.aspect === "happy-path",
+    );
+    expect(aHappy?.status).toBe("covered");
+
+    const bHappy = gaps.find(
+      (g) => g.changedFilePath === "src/b.ts" && g.aspect === "happy-path",
+    );
+    expect(bHappy?.status).toBe("uncovered");
+  });
+});
+
+describe("detectMissingLayers", () => {
+  it("returns all layers when no test assets exist", () => {
+    const missing = detectMissingLayers([]);
+    expect(missing).toEqual(["unit", "e2e", "visual", "storybook", "api"]);
+  });
+
+  it("excludes layers that have at least one test asset", () => {
+    const testAssets = [
+      makeTestAsset("tests/unit/foo.test.ts", "unit", ["src/foo.ts"]),
+      makeTestAsset("tests/api/foo.test.ts", "api", ["src/api/foo.ts"]),
+    ];
+
+    const missing = detectMissingLayers(testAssets);
+
+    expect(missing).not.toContain("unit");
+    expect(missing).not.toContain("api");
+    expect(missing).toContain("e2e");
+    expect(missing).toContain("visual");
+    expect(missing).toContain("storybook");
+  });
+
+  it("returns empty when all layers are covered", () => {
+    const testAssets = [
+      makeTestAsset("a.test.ts", "unit", []),
+      makeTestAsset("a.spec.ts", "e2e", []),
+      makeTestAsset("a.visual.ts", "visual", []),
+      makeTestAsset("a.stories.tsx", "storybook", []),
+      makeTestAsset("a.api.ts", "api", []),
+    ];
+
+    const missing = detectMissingLayers(testAssets);
+    expect(missing).toEqual([]);
+  });
+});

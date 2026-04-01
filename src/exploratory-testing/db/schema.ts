@@ -92,6 +92,23 @@ CREATE INDEX IF NOT EXISTS idx_step_progress_status
 CREATE INDEX IF NOT EXISTS idx_step_progress_updated_at
   ON step_progress(updated_at);
 
+CREATE TABLE IF NOT EXISTS test_mappings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  change_analysis_id INTEGER NOT NULL UNIQUE
+    REFERENCES change_analyses(id)
+    ON DELETE CASCADE,
+  pr_intake_id INTEGER NOT NULL
+    REFERENCES pr_intakes(id)
+    ON DELETE CASCADE,
+  test_assets_json TEXT NOT NULL DEFAULT '[]',
+  test_summaries_json TEXT NOT NULL DEFAULT '[]',
+  coverage_gap_map_json TEXT NOT NULL DEFAULT '[]',
+  missing_layers_json TEXT NOT NULL DEFAULT '[]',
+  mapped_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_pr_intakes_lookup
   ON pr_intakes(provider, repository, pr_number);
 `;

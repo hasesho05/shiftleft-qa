@@ -21,6 +21,13 @@ import {
   type StepProgressSnapshot,
   progressStatusSchema,
 } from "../models/progress";
+import {
+  type TestMappingResult,
+  coverageGapEntrySchema,
+  testAssetSchema,
+  testLayerSchema,
+  testSummarySchema,
+} from "../models/test-mapping";
 import { WORKSPACE_SCHEMA_SQL } from "./schema";
 
 export type WorkspaceStateRecord = {
@@ -663,6 +670,143 @@ function mapChangeAnalysisRow(row: ChangeAnalysisRow): PersistedChangeAnalysis {
       .parse(JSON.parse(row.viewpoint_seeds_json)),
     summary: row.summary,
     analyzedAt: row.analyzed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// --- Test Mapping repository ---
+
+export type PersistedTestMapping = {
+  readonly id: number;
+  readonly prIntakeId: number;
+  readonly changeAnalysisId: number;
+  readonly testAssets: TestMappingResult["testAssets"];
+  readonly testSummaries: TestMappingResult["testSummaries"];
+  readonly coverageGapMap: TestMappingResult["coverageGapMap"];
+  readonly missingLayers: TestMappingResult["missingLayers"];
+  readonly mappedAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type TestMappingRow = {
+  readonly id: number;
+  readonly pr_intake_id: number;
+  readonly change_analysis_id: number;
+  readonly test_assets_json: string;
+  readonly test_summaries_json: string;
+  readonly coverage_gap_map_json: string;
+  readonly missing_layers_json: string;
+  readonly mapped_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export function saveTestMapping(
+  databasePath: string,
+  result: TestMappingResult,
+): PersistedTestMapping {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO test_mappings (
+            change_analysis_id, pr_intake_id,
+            test_assets_json, test_summaries_json,
+            coverage_gap_map_json, missing_layers_json,
+            mapped_at, created_at, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+          ON CONFLICT(change_analysis_id) DO UPDATE SET
+            pr_intake_id = excluded.pr_intake_id,
+            test_assets_json = excluded.test_assets_json,
+            test_summaries_json = excluded.test_summaries_json,
+            coverage_gap_map_json = excluded.coverage_gap_map_json,
+            missing_layers_json = excluded.missing_layers_json,
+            mapped_at = excluded.mapped_at,
+            updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          result.changeAnalysisId,
+          result.prIntakeId,
+          JSON.stringify(result.testAssets),
+          JSON.stringify(result.testSummaries),
+          JSON.stringify(result.coverageGapMap),
+          JSON.stringify(result.missingLayers),
+          result.mappedAt,
+          timestamp,
+          timestamp,
+        );
+
+      return database
+        .query(
+          `
+          SELECT * FROM test_mappings
+          WHERE change_analysis_id = ?1
+          `,
+        )
+        .get<TestMappingRow>(result.changeAnalysisId);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist test mapping for change_analysis_id=${result.changeAnalysisId}`,
+      );
+    }
+
+    return mapTestMappingRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function findTestMapping(
+  databasePath: string,
+  changeAnalysisId: number,
+): PersistedTestMapping | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query(
+        `
+        SELECT * FROM test_mappings
+        WHERE change_analysis_id = ?1
+        `,
+      )
+      .get<TestMappingRow>(changeAnalysisId);
+
+    return row ? mapTestMappingRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+function mapTestMappingRow(row: TestMappingRow): PersistedTestMapping {
+  return {
+    id: row.id,
+    prIntakeId: row.pr_intake_id,
+    changeAnalysisId: row.change_analysis_id,
+    testAssets: z
+      .array(testAssetSchema)
+      .parse(JSON.parse(row.test_assets_json)),
+    testSummaries: z
+      .array(testSummarySchema)
+      .parse(JSON.parse(row.test_summaries_json)),
+    coverageGapMap: z
+      .array(coverageGapEntrySchema)
+      .parse(JSON.parse(row.coverage_gap_map_json)),
+    missingLayers: z
+      .array(testLayerSchema)
+      .parse(JSON.parse(row.missing_layers_json)),
+    mappedAt: row.mapped_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

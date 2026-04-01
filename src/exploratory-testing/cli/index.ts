@@ -6,6 +6,7 @@ import { progressStatusSchema } from "../models/progress";
 import { runDiscoverContext } from "../tools/discover-context";
 import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
 import { readPluginManifest } from "../tools/manifest";
+import { runMapTests } from "../tools/map-tests";
 import { runPrIntake } from "../tools/pr-intake";
 import { writeProgressSummary, writeStepHandover } from "../tools/progress";
 import {
@@ -23,6 +24,12 @@ type PrIntakeCommandOptions = WorkspaceCommandOptions & {
 };
 
 type DiscoverContextCommandOptions = WorkspaceCommandOptions & {
+  readonly pr?: number;
+  readonly provider?: string;
+  readonly repository?: string;
+};
+
+type MapTestsCommandOptions = WorkspaceCommandOptions & {
   readonly pr?: number;
   readonly provider?: string;
   readonly repository?: string;
@@ -189,6 +196,44 @@ cli
         (v) => v.seeds.length > 0,
       ).length,
       summary: result.persisted.summary,
+      handoverPath: result.handover.filePath,
+      status: result.handover.snapshot.status,
+    });
+  });
+
+cli
+  .command("map-tests", "Map related test files and build coverage gap map")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--pr <prNumber>", "PR or MR number")
+  .option("--provider <provider>", "SCM provider (github or gitlab)")
+  .option("--repository <repository>", "Repository in owner/repo format")
+  .action(async (options: MapTestsCommandOptions) => {
+    if (!options.pr) {
+      throw new Error("The --pr option is required.");
+    }
+    if (!options.provider) {
+      throw new Error("The --provider option is required.");
+    }
+    if (!options.repository) {
+      throw new Error("The --repository option is required.");
+    }
+
+    const result = await runMapTests({
+      prNumber: options.pr,
+      provider: options.provider,
+      repository: options.repository,
+      configPath: options.config,
+      manifestPath: options.manifest,
+    });
+
+    emitJson({
+      prIntakeId: result.persisted.prIntakeId,
+      changeAnalysisId: result.persisted.changeAnalysisId,
+      testAssets: result.persisted.testAssets.length,
+      testSummaries: result.persisted.testSummaries.length,
+      coverageGapEntries: result.persisted.coverageGapMap.length,
+      missingLayers: result.persisted.missingLayers,
       handoverPath: result.handover.filePath,
       status: result.handover.snapshot.status,
     });

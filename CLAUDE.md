@@ -298,6 +298,7 @@ handover 本文では file path や reason を Markdown table に流し込むこ
 
 - table cell に入れる path / reason / coveredBy は `escapePipe()` 相当で処理する
 - change analysis, map-tests, assess-gaps の handover では特に注意する
+- free-text 入力（observation の action / expected / actual / note など）は改行も `<br>` に置換すること。`|` だけ escape しても `\n` が table 行を分断する
 
 progress file は人間が読む成果物でもあるので、壊れた Markdown を残さないこと。
 

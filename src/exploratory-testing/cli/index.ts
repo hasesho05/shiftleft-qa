@@ -2,6 +2,11 @@ import { readFile } from "node:fs/promises";
 
 import { cac } from "cac";
 
+import {
+  findingSeveritySchema,
+  findingTypeSchema,
+  recommendedTestLayerSchema,
+} from "../models/finding";
 import { progressStatusSchema } from "../models/progress";
 import { observationOutcomeSchema } from "../models/session";
 import { runAssessGaps } from "../tools/assess-gaps";
@@ -23,6 +28,12 @@ import {
   initializeDatabaseFromConfig,
   initializeWorkspace,
 } from "../tools/setup";
+import {
+  addFinding,
+  generateAutomationReport,
+  generateTriageReport,
+  writeTriageHandover,
+} from "../tools/triage-findings";
 
 type WorkspaceCommandOptions = {
   readonly config?: string;
@@ -58,6 +69,21 @@ type SessionObserveCommandOptions = WorkspaceCommandOptions & {
 type SessionTransitionCommandOptions = WorkspaceCommandOptions & {
   readonly session?: number;
   readonly reason?: string;
+};
+
+type FindingAddCommandOptions = WorkspaceCommandOptions & {
+  readonly session?: number;
+  readonly observation?: number;
+  readonly type?: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly severity?: string;
+  readonly testLayer?: string;
+  readonly rationale?: string;
+};
+
+type FindingReportCommandOptions = WorkspaceCommandOptions & {
+  readonly session?: number;
 };
 
 type HandoverCommandOptions = WorkspaceCommandOptions & {
@@ -475,6 +501,156 @@ cli
       sessionId: result.session.id,
       status: result.session.status,
       completedAt: result.session.completedAt,
+      handoverPath: result.handover.filePath,
+    });
+  });
+
+// ---------------------------------------------------------------------------
+// finding commands
+// ---------------------------------------------------------------------------
+
+cli
+  .command(
+    "finding add",
+    "Add a finding from an observation (defect, spec-gap, automation-candidate)",
+  )
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--session <sessionId>", "Session ID")
+  .option("--observation <observationId>", "Observation ID")
+  .option("--type <findingType>", "defect | spec-gap | automation-candidate")
+  .option("--title <title>", "Finding title")
+  .option("--description <description>", "Finding description")
+  .option("--severity <severity>", "low | medium | high | critical")
+  .option("--test-layer <testLayer>", "unit | integration | e2e | visual | api")
+  .option("--rationale <rationale>", "Automation rationale")
+  .action(async (options: FindingAddCommandOptions) => {
+    if (
+      !options.session ||
+      !options.observation ||
+      !options.type ||
+      !options.title ||
+      !options.description ||
+      !options.severity
+    ) {
+      throw new Error(
+        "The --session, --observation, --type, --title, --description, and --severity options are required.",
+      );
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+
+    const result = await addFinding({
+      sessionId: options.session,
+      observationId: options.observation,
+      type: findingTypeSchema.parse(options.type),
+      title: options.title,
+      description: options.description,
+      severity: findingSeveritySchema.parse(options.severity),
+      recommendedTestLayer: options.testLayer
+        ? recommendedTestLayerSchema.parse(options.testLayer)
+        : null,
+      automationRationale: options.rationale ?? null,
+      config,
+    });
+
+    emitJson({
+      findingId: result.finding.id,
+      sessionId: result.finding.sessionId,
+      observationId: result.finding.observationId,
+      type: result.finding.type,
+      severity: result.finding.severity,
+      recommendedTestLayer: result.finding.recommendedTestLayer,
+    });
+  });
+
+cli
+  .command("finding report", "Generate a triage findings report")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--session <sessionId>", "Session ID")
+  .action(async (options: FindingReportCommandOptions) => {
+    if (!options.session) {
+      throw new Error("The --session option is required.");
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+
+    const report = await generateTriageReport({
+      sessionId: options.session,
+      config,
+    });
+
+    emitJson({
+      sessionId: report.sessionId,
+      totalFindings: report.totalFindings,
+      countByType: report.countByType,
+      countBySeverity: report.countBySeverity,
+      findings: report.findings.map((f) => ({
+        id: f.id,
+        type: f.type,
+        title: f.title,
+        severity: f.severity,
+        recommendedTestLayer: f.recommendedTestLayer,
+      })),
+    });
+  });
+
+cli
+  .command(
+    "finding automation-report",
+    "Generate an automation candidate report",
+  )
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--session <sessionId>", "Session ID")
+  .action(async (options: FindingReportCommandOptions) => {
+    if (!options.session) {
+      throw new Error("The --session option is required.");
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+
+    const report = await generateAutomationReport({
+      sessionId: options.session,
+      config,
+    });
+
+    emitJson({
+      sessionId: report.sessionId,
+      totalCandidates: report.totalCandidates,
+      countByLayer: report.countByLayer,
+      candidates: report.candidates.map((c) => ({
+        id: c.id,
+        title: c.title,
+        severity: c.severity,
+        recommendedTestLayer: c.recommendedTestLayer,
+        automationRationale: c.automationRationale,
+      })),
+    });
+  });
+
+cli
+  .command("finding handover", "Write triage-findings handover document")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--session <sessionId>", "Session ID")
+  .action(async (options: FindingReportCommandOptions) => {
+    if (!options.session) {
+      throw new Error("The --session option is required.");
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+
+    const result = await writeTriageHandover({
+      sessionId: options.session,
+      config,
+    });
+
+    emitJson({
+      sessionId: result.triageReport.sessionId,
+      totalFindings: result.triageReport.totalFindings,
+      totalAutomationCandidates: result.automationReport.totalCandidates,
       handoverPath: result.handover.filePath,
     });
   });

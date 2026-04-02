@@ -182,4 +182,33 @@ CREATE INDEX IF NOT EXISTS idx_sessions_status
 
 CREATE INDEX IF NOT EXISTS idx_observations_session_id
   ON observations(session_id);
+
+CREATE TABLE IF NOT EXISTS findings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL
+    REFERENCES sessions(id)
+    ON DELETE CASCADE,
+  observation_id INTEGER NOT NULL
+    REFERENCES observations(id)
+    ON DELETE CASCADE,
+  type TEXT NOT NULL
+    CHECK (type IN ('defect', 'spec-gap', 'automation-candidate')),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  severity TEXT NOT NULL
+    CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+  recommended_test_layer TEXT
+    CHECK (recommended_test_layer IS NULL OR recommended_test_layer IN (
+      'unit', 'integration', 'e2e', 'visual', 'api'
+    )),
+  automation_rationale TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_findings_session_id
+  ON findings(session_id);
+
+CREATE INDEX IF NOT EXISTS idx_findings_type
+  ON findings(type);
 `;

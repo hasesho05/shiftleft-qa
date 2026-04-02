@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { cac } from "cac";
 
 import { progressStatusSchema } from "../models/progress";
+import { observationOutcomeSchema } from "../models/session";
 import { runAssessGaps } from "../tools/assess-gaps";
+import { readPluginConfig } from "../tools/config";
 import { runDiscoverContext } from "../tools/discover-context";
 import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
 import { runGenerateCharters } from "../tools/generate-charters";
@@ -11,6 +13,12 @@ import { readPluginManifest } from "../tools/manifest";
 import { runMapTests } from "../tools/map-tests";
 import { runPrIntake } from "../tools/pr-intake";
 import { writeProgressSummary, writeStepHandover } from "../tools/progress";
+import {
+  addSessionObservation,
+  completeSession,
+  interruptSession,
+  startSession,
+} from "../tools/run-session";
 import {
   initializeDatabaseFromConfig,
   initializeWorkspace,
@@ -29,6 +37,27 @@ type PrPipelineCommandOptions = WorkspaceCommandOptions & {
   readonly pr?: number;
   readonly provider?: string;
   readonly repository?: string;
+};
+
+type SessionStartCommandOptions = WorkspaceCommandOptions & {
+  readonly sessionChartersId?: number;
+  readonly charterIndex?: number;
+};
+
+type SessionObserveCommandOptions = WorkspaceCommandOptions & {
+  readonly session?: number;
+  readonly heuristic?: string;
+  readonly action?: string;
+  readonly expected?: string;
+  readonly actual?: string;
+  readonly outcome?: string;
+  readonly note?: string;
+  readonly evidencePath?: string;
+};
+
+type SessionTransitionCommandOptions = WorkspaceCommandOptions & {
+  readonly session?: number;
+  readonly reason?: string;
 };
 
 type HandoverCommandOptions = WorkspaceCommandOptions & {
@@ -308,6 +337,145 @@ cli
       chartersGenerated: result.persisted.charters.length,
       handoverPath: result.handover.filePath,
       status: result.handover.snapshot.status,
+    });
+  });
+
+cli
+  .command("session start", "Start an exploratory session from a charter")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option(
+    "--session-charters-id <sessionChartersId>",
+    "Session charters record ID",
+  )
+  .option("--charter-index <charterIndex>", "Charter index (0-based)")
+  .action(async (options: SessionStartCommandOptions) => {
+    if (options.sessionChartersId === undefined) {
+      throw new Error("The --session-charters-id option is required.");
+    }
+    if (options.charterIndex === undefined) {
+      throw new Error("The --charter-index option is required.");
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+
+    const result = await startSession({
+      sessionChartersId: options.sessionChartersId,
+      charterIndex: options.charterIndex,
+      config,
+    });
+
+    emitJson({
+      sessionId: result.session.id,
+      charterTitle: result.session.charterTitle,
+      status: result.session.status,
+      startedAt: result.session.startedAt,
+    });
+  });
+
+cli
+  .command("session observe", "Add an observation to a running session")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--session <sessionId>", "Session ID")
+  .option("--heuristic <heuristic>", "Targeted heuristic")
+  .option("--action <action>", "Action performed")
+  .option("--expected <expected>", "Expected result")
+  .option("--actual <actual>", "Actual result")
+  .option("--outcome <outcome>", "pass | fail | unclear | suspicious")
+  .option("--note <note>", "Optional note")
+  .option("--evidence-path <evidencePath>", "Path to evidence file")
+  .action(async (options: SessionObserveCommandOptions) => {
+    if (!options.session) {
+      throw new Error("The --session option is required.");
+    }
+    if (
+      !options.heuristic ||
+      !options.action ||
+      !options.expected ||
+      !options.actual ||
+      !options.outcome
+    ) {
+      throw new Error(
+        "The --heuristic, --action, --expected, --actual, and --outcome options are required.",
+      );
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+    const outcome = observationOutcomeSchema.parse(options.outcome);
+
+    const result = await addSessionObservation({
+      sessionId: options.session,
+      targetedHeuristic: options.heuristic,
+      action: options.action,
+      expected: options.expected,
+      actual: options.actual,
+      outcome,
+      note: options.note ?? "",
+      evidencePath: options.evidencePath ?? null,
+      config,
+    });
+
+    emitJson({
+      observationId: result.observation.id,
+      sessionId: result.observation.sessionId,
+      observationOrder: result.observation.observationOrder,
+      outcome: result.observation.outcome,
+    });
+  });
+
+cli
+  .command("session interrupt", "Interrupt a running session")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--session <sessionId>", "Session ID")
+  .option("--reason <reason>", "Reason for interruption")
+  .action(async (options: SessionTransitionCommandOptions) => {
+    if (!options.session) {
+      throw new Error("The --session option is required.");
+    }
+    if (!options.reason) {
+      throw new Error("The --reason option is required.");
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+
+    const result = await interruptSession({
+      sessionId: options.session,
+      reason: options.reason,
+      config,
+    });
+
+    emitJson({
+      sessionId: result.session.id,
+      status: result.session.status,
+      interruptReason: result.session.interruptReason,
+      handoverPath: result.handover.filePath,
+    });
+  });
+
+cli
+  .command("session complete", "Complete a running session")
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--session <sessionId>", "Session ID")
+  .action(async (options: SessionTransitionCommandOptions) => {
+    if (!options.session) {
+      throw new Error("The --session option is required.");
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+
+    const result = await completeSession({
+      sessionId: options.session,
+      config,
+    });
+
+    emitJson({
+      sessionId: result.session.id,
+      status: result.session.status,
+      completedAt: result.session.completedAt,
+      handoverPath: result.handover.filePath,
     });
   });
 

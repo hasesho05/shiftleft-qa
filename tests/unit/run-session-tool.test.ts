@@ -228,7 +228,8 @@ describe("run-session tool", () => {
 
     expect(result.session.status).toBe("completed");
     expect(result.session.completedAt).not.toBeNull();
-    expect(result.handover.snapshot.status).toBe("in_progress");
+    // Single session → step should be completed
+    expect(result.handover.snapshot.status).toBe("completed");
 
     const handover = await readStepHandoverDocument(result.handover.filePath);
     expect(handover.body).toContain("Session");
@@ -266,5 +267,91 @@ describe("run-session tool", () => {
     // Stale interrupt fields should be cleared on resume
     expect(resumed.session.interruptedAt).toBeNull();
     expect(resumed.session.interruptReason).toBeNull();
+  });
+
+  it("rejects observation on a non-running session", async () => {
+    const workspace = await setupWorkspace();
+    const { sessionChartersId } = await seedThroughCharters(workspace);
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const { session } = await startSession({
+      sessionChartersId,
+      charterIndex: 0,
+      config,
+    });
+
+    await completeSession({ sessionId: session.id, config });
+
+    // Observation on completed session should throw
+    await expect(
+      addSessionObservation({
+        sessionId: session.id,
+        targetedHeuristic: "error-guessing",
+        action: "Do something",
+        expected: "Something",
+        actual: "Something",
+        outcome: "pass",
+        note: "",
+        evidencePath: null,
+        config,
+      }),
+    ).rejects.toThrow(/in_progress/);
+  });
+
+  it("marks run-session step as completed when last session finishes", async () => {
+    const workspace = await setupWorkspace();
+    const { sessionChartersId } = await seedThroughCharters(workspace);
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    // Start and complete the only session from charter index 0
+    const { session } = await startSession({
+      sessionChartersId,
+      charterIndex: 0,
+      config,
+    });
+
+    const result = await completeSession({
+      sessionId: session.id,
+      config,
+    });
+
+    // When no remaining planned/in_progress sessions exist, step should be completed
+    expect(result.handover.snapshot.status).toBe("completed");
+  });
+
+  it("keeps run-session step in_progress when other sessions remain", async () => {
+    const workspace = await setupWorkspace();
+    const { sessionChartersId } = await seedThroughCharters(workspace);
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    // Start two sessions
+    const first = await startSession({
+      sessionChartersId,
+      charterIndex: 0,
+      config,
+    });
+    await startSession({
+      sessionChartersId,
+      charterIndex: 1,
+      config,
+    });
+
+    // Complete only the first
+    const result = await completeSession({
+      sessionId: first.session.id,
+      config,
+    });
+
+    // Second session still in_progress, so step stays in_progress
+    expect(result.handover.snapshot.status).toBe("in_progress");
   });
 });

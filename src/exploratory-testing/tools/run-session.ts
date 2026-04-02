@@ -1,8 +1,10 @@
 import {
   type PersistedObservation,
   type PersistedSession,
+  findSession,
   findSessionChartersById,
   listObservations,
+  listSessionsByChartersId,
   saveObservation,
   saveSession,
   updateSessionStatus,
@@ -73,6 +75,18 @@ export type AddObservationResult = {
 export async function addSessionObservation(
   input: AddObservationInput,
 ): Promise<AddObservationResult> {
+  const session = findSession(input.config.paths.database, input.sessionId);
+
+  if (!session) {
+    throw new Error(`Session not found: id=${input.sessionId}`);
+  }
+
+  if (session.status !== "in_progress") {
+    throw new Error(
+      `Cannot add observation to session in "${session.status}" status; session must be in_progress`,
+    );
+  }
+
   const observation = saveObservation(input.config.paths.database, {
     sessionId: input.sessionId,
     targetedHeuristic: input.targetedHeuristic,
@@ -147,10 +161,19 @@ export async function completeSession(
   const observations = listObservations(databasePath, session.id);
   const body = buildSessionHandoverBody(session, observations, "completed");
 
-  // run-session step stays in_progress because other sessions may still run
+  // Check if all sibling sessions are done (completed or interrupted)
+  const allSessions = listSessionsByChartersId(
+    databasePath,
+    session.sessionChartersId,
+  );
+  const hasRemaining = allSessions.some(
+    (s) => s.status === "planned" || s.status === "in_progress",
+  );
+  const stepStatus = hasRemaining ? "in_progress" : "completed";
+
   const handover = await writeStepHandoverFromConfig(input.config, {
     stepName: "run-session",
-    status: "in_progress",
+    status: stepStatus,
     summary: buildSessionHandoverSummary(session, observations, "completed"),
     body,
   });

@@ -354,4 +354,41 @@ describe("run-session tool", () => {
     // Second session still in_progress, so step stays in_progress
     expect(result.handover.snapshot.status).toBe("in_progress");
   });
+
+  it("escapes newlines in observation fields for handover markdown table", async () => {
+    const workspace = await setupWorkspace();
+    const { sessionChartersId } = await seedThroughCharters(workspace);
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const { session } = await startSession({
+      sessionChartersId,
+      charterIndex: 0,
+      config,
+    });
+
+    await addSessionObservation({
+      sessionId: session.id,
+      targetedHeuristic: "error-guessing",
+      action: "Step 1: Click button\nStep 2: Wait for response",
+      expected: "Success message\nwith details",
+      actual: "Error message\nwith stack trace",
+      outcome: "fail",
+      note: "Multi-line\nnote here",
+      evidencePath: null,
+      config,
+    });
+
+    const result = await completeSession({
+      sessionId: session.id,
+      config,
+    });
+
+    const handover = await readStepHandoverDocument(result.handover.filePath);
+    // Newlines should be replaced with <br> in table cells, not raw \n
+    expect(handover.body).not.toMatch(/\| [^|]*\n[^|]* \|/);
+    expect(handover.body).toContain("<br>");
+  });
 });

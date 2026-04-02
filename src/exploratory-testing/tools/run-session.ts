@@ -337,5 +337,5 @@ function countOutcomes(observations: readonly PersistedObservation[]): {
 }
 
 function escapePipe(text: string): string {
-  return text.replace(/\|/g, "\\|");
+  return text.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
 }

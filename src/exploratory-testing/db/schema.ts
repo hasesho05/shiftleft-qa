@@ -122,6 +122,40 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS allocation_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  risk_assessment_id INTEGER NOT NULL
+    REFERENCES risk_assessments(id)
+    ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  changed_file_paths_json TEXT NOT NULL DEFAULT '[]',
+  risk_level TEXT NOT NULL
+    CHECK (risk_level IN ('high', 'medium', 'low')),
+  recommended_destination TEXT NOT NULL
+    CHECK (recommended_destination IN (
+      'review',
+      'unit',
+      'integration',
+      'e2e',
+      'visual',
+      'dev-box',
+      'manual-exploration',
+      'skip'
+    )),
+  confidence REAL NOT NULL
+    CHECK (confidence >= 0.0 AND confidence <= 1.0),
+  rationale TEXT NOT NULL,
+  source_signals_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_allocation_items_risk_assessment_id
+  ON allocation_items(risk_assessment_id);
+
+CREATE INDEX IF NOT EXISTS idx_allocation_items_destination
+  ON allocation_items(recommended_destination);
+
 CREATE TABLE IF NOT EXISTS session_charters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   risk_assessment_id INTEGER NOT NULL UNIQUE

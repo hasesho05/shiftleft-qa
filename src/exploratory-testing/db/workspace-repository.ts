@@ -6,6 +6,16 @@ import { Database } from "bun:sqlite";
 import { WORKFLOW_SKILLS, getWorkflowSkillOrThrow } from "../config/workflow";
 import { v } from "../lib/validation";
 import {
+  type AllocationDestination,
+  type AllocationDestinationCounts,
+  type AllocationItem,
+  type AllocationSourceSignals,
+  allocationDestinationSchema,
+  allocationItemSchema,
+  allocationSourceSignalsSchema,
+  createEmptyAllocationDestinationCounts,
+} from "../models/allocation";
+import {
   type ChangeAnalysisResult,
   fileChangeAnalysisSchema,
   relatedCodeCandidateSchema,
@@ -50,6 +60,7 @@ import {
 import {
   type TestMappingResult,
   coverageGapEntrySchema,
+  explorationPrioritySchema,
   testAssetSchema,
   testLayerSchema,
   testSummarySchema,
@@ -703,6 +714,23 @@ export function findChangeAnalysis(
   }
 }
 
+export function findChangeAnalysisById(
+  databasePath: string,
+  id: number,
+): PersistedChangeAnalysis | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM change_analyses WHERE id = ?1")
+      .get<ChangeAnalysisRow>(id);
+
+    return row ? mapChangeAnalysisRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
 function mapChangeAnalysisRow(row: ChangeAnalysisRow): PersistedChangeAnalysis {
   return {
     id: row.id,
@@ -833,6 +861,23 @@ export function findTestMapping(
         `,
       )
       .get<TestMappingRow>(changeAnalysisId);
+
+    return row ? mapTestMappingRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+export function findTestMappingById(
+  databasePath: string,
+  id: number,
+): PersistedTestMapping | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM test_mappings WHERE id = ?1")
+      .get<TestMappingRow>(id);
 
     return row ? mapTestMappingRow(row) : null;
   } finally {
@@ -972,6 +1017,23 @@ export function findRiskAssessment(
   }
 }
 
+export function findRiskAssessmentById(
+  databasePath: string,
+  id: number,
+): PersistedRiskAssessment | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM risk_assessments WHERE id = ?1")
+      .get<RiskAssessmentRow>(id);
+
+    return row ? mapRiskAssessmentRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
 function mapRiskAssessmentRow(row: RiskAssessmentRow): PersistedRiskAssessment {
   return {
     id: row.id,
@@ -989,6 +1051,247 @@ function mapRiskAssessmentRow(row: RiskAssessmentRow): PersistedRiskAssessment {
       JSON.parse(row.exploration_themes_json),
     ),
     assessedAt: row.assessed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Allocation Items
+// ---------------------------------------------------------------------------
+
+export type PersistedAllocationItem = {
+  readonly id: number;
+  readonly riskAssessmentId: number;
+  readonly title: string;
+  readonly changedFilePaths: readonly string[];
+  readonly riskLevel: AllocationItem["riskLevel"];
+  readonly recommendedDestination: AllocationDestination;
+  readonly confidence: number;
+  readonly rationale: string;
+  readonly sourceSignals: AllocationSourceSignals;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type AllocationItemRow = {
+  readonly id: number;
+  readonly risk_assessment_id: number;
+  readonly title: string;
+  readonly changed_file_paths_json: string;
+  readonly risk_level: string;
+  readonly recommended_destination: string;
+  readonly confidence: number;
+  readonly rationale: string;
+  readonly source_signals_json: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+type AllocationCountRow = {
+  readonly destination: string;
+  readonly count: number;
+};
+
+export function saveAllocationItems(
+  databasePath: string,
+  riskAssessmentId: number,
+  items: readonly AllocationItem[],
+): readonly PersistedAllocationItem[] {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const riskAssessment = requireRiskAssessment(
+      databasePath,
+      riskAssessmentId,
+    );
+
+    const normalizedItems = items.map((item) =>
+      allocationItemSchema.parse({
+        ...item,
+        riskAssessmentId,
+      }),
+    );
+
+    for (const item of normalizedItems) {
+      if (item.riskAssessmentId !== riskAssessmentId) {
+        throw new Error(
+          `Allocation item riskAssessmentId mismatch: expected ${riskAssessmentId}, got ${item.riskAssessmentId}`,
+        );
+      }
+    }
+
+    const persist = database.transaction(() => {
+      database
+        .query("DELETE FROM allocation_items WHERE risk_assessment_id = ?1")
+        .run(riskAssessmentId);
+
+      const insert = database.query(
+        `
+        INSERT INTO allocation_items (
+          risk_assessment_id,
+          title,
+          changed_file_paths_json,
+          risk_level,
+          recommended_destination,
+          confidence,
+          rationale,
+          source_signals_json,
+          created_at,
+          updated_at
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        `,
+      );
+
+      for (const item of normalizedItems) {
+        insert.run(
+          riskAssessment.id,
+          item.title,
+          JSON.stringify(item.changedFilePaths),
+          item.riskLevel,
+          item.recommendedDestination,
+          item.confidence,
+          item.rationale,
+          JSON.stringify(item.sourceSignals),
+          timestamp,
+          timestamp,
+        );
+      }
+
+      return database
+        .query(
+          `
+          SELECT * FROM allocation_items
+          WHERE risk_assessment_id = ?1
+          ORDER BY id
+          `,
+        )
+        .all<AllocationItemRow>(riskAssessmentId);
+    });
+
+    const rows = persist();
+    return rows.map(mapAllocationItemRow);
+  } finally {
+    database.close();
+  }
+}
+
+export function listAllocationItems(
+  databasePath: string,
+  riskAssessmentId: number,
+): readonly PersistedAllocationItem[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    requireRiskAssessment(databasePath, riskAssessmentId);
+    const rows = database
+      .query(
+        `
+        SELECT * FROM allocation_items
+        WHERE risk_assessment_id = ?1
+        ORDER BY id
+        `,
+      )
+      .all<AllocationItemRow>(riskAssessmentId);
+
+    return rows.map(mapAllocationItemRow);
+  } finally {
+    database.close();
+  }
+}
+
+export function listAllocationItemsByDestination(
+  databasePath: string,
+  riskAssessmentId: number,
+  destination: AllocationDestination,
+): readonly PersistedAllocationItem[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    requireRiskAssessment(databasePath, riskAssessmentId);
+    const rows = database
+      .query(
+        `
+        SELECT * FROM allocation_items
+        WHERE risk_assessment_id = ?1
+          AND recommended_destination = ?2
+        ORDER BY id
+        `,
+      )
+      .all<AllocationItemRow>(riskAssessmentId, destination);
+
+    return rows.map(mapAllocationItemRow);
+  } finally {
+    database.close();
+  }
+}
+
+export function countAllocationItemsByDestination(
+  databasePath: string,
+  riskAssessmentId: number,
+): AllocationDestinationCounts {
+  const database = openDatabase(databasePath);
+
+  try {
+    requireRiskAssessment(databasePath, riskAssessmentId);
+    const counts = createEmptyAllocationDestinationCounts();
+    const rows = database
+      .query(
+        `
+        SELECT recommended_destination AS destination, COUNT(*) AS count
+        FROM allocation_items
+        WHERE risk_assessment_id = ?1
+        GROUP BY recommended_destination
+        `,
+      )
+      .all<AllocationCountRow>(riskAssessmentId);
+
+    for (const row of rows) {
+      const destination = allocationDestinationSchema.parse(row.destination);
+      counts[destination] = row.count;
+    }
+
+    return counts;
+  } finally {
+    database.close();
+  }
+}
+
+function requireRiskAssessment(
+  databasePath: string,
+  riskAssessmentId: number,
+): PersistedRiskAssessment {
+  const riskAssessment = findRiskAssessmentById(databasePath, riskAssessmentId);
+
+  if (!riskAssessment) {
+    throw new Error(
+      `Risk assessment not found for id=${riskAssessmentId}. Run assess-gaps first.`,
+    );
+  }
+
+  return riskAssessment;
+}
+
+function mapAllocationItemRow(row: AllocationItemRow): PersistedAllocationItem {
+  return {
+    id: row.id,
+    riskAssessmentId: row.risk_assessment_id,
+    title: row.title,
+    changedFilePaths: v.parse(
+      v.array(v.string()),
+      JSON.parse(row.changed_file_paths_json),
+    ),
+    riskLevel: v.parse(explorationPrioritySchema, row.risk_level),
+    recommendedDestination: allocationDestinationSchema.parse(
+      row.recommended_destination,
+    ),
+    confidence: row.confidence,
+    rationale: row.rationale,
+    sourceSignals: v.parse(
+      allocationSourceSignalsSchema,
+      JSON.parse(row.source_signals_json),
+    ),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

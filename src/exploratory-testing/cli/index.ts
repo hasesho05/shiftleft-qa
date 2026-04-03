@@ -11,12 +11,26 @@ import {
 } from "../models/finding";
 import { progressStatusSchema } from "../models/progress";
 import { observationOutcomeSchema } from "../models/session";
+import {
+  listAllocation,
+  runAllocate,
+  summarizeAllocation,
+} from "../tools/allocate";
 import { runAssessGaps } from "../tools/assess-gaps";
 import { readPluginConfig } from "../tools/config";
 import { runDiscoverContext } from "../tools/discover-context";
 import { createEnvironmentReport } from "../tools/doctor";
 import { exportArtifacts } from "../tools/export-artifacts";
 import { runGenerateCharters } from "../tools/generate-charters";
+import {
+  generateHandoffMarkdown,
+  runAddHandoffComment,
+  runAddHandoffCommentRaw,
+  runCreateHandoffIssue,
+  runCreateHandoffIssueRaw,
+  runUpdateHandoffIssue,
+  runUpdateHandoffIssueBody,
+} from "../tools/handoff";
 import { readPluginManifest } from "../tools/manifest";
 import { runMapTests } from "../tools/map-tests";
 import { runPrIntake } from "../tools/pr-intake";
@@ -100,6 +114,57 @@ type HandoverCommandOptions = WorkspaceCommandOptions & {
   readonly nextStep?: string;
   readonly body?: string;
   readonly bodyFile?: string;
+};
+
+type AllocateCommandOptions = WorkspaceCommandOptions & {
+  readonly riskAssessmentId?: number;
+};
+
+type HandoffCreateCommandOptions = {
+  readonly repository?: string;
+  readonly title?: string;
+  readonly body?: string;
+  readonly bodyFile?: string;
+  readonly label?: string[];
+  readonly assignee?: string[];
+  readonly cwd?: string;
+};
+
+type HandoffGenerateCommandOptions = WorkspaceCommandOptions & {
+  readonly riskAssessmentId?: number;
+};
+
+type HandoffPublishCommandOptions = WorkspaceCommandOptions & {
+  readonly riskAssessmentId?: number;
+  readonly title?: string;
+  readonly label?: string[];
+  readonly assignee?: string[];
+};
+
+type HandoffAllocationUpdateCommandOptions = WorkspaceCommandOptions & {
+  readonly riskAssessmentId?: number;
+  readonly issueNumber?: number;
+};
+
+type HandoffFindingsCommandOptions = WorkspaceCommandOptions & {
+  readonly issueNumber?: number;
+  readonly sessionId?: number;
+};
+
+type HandoffUpdateCommandOptions = {
+  readonly repository?: string;
+  readonly issueNumber?: number;
+  readonly body?: string;
+  readonly bodyFile?: string;
+  readonly cwd?: string;
+};
+
+type HandoffCommentCommandOptions = {
+  readonly repository?: string;
+  readonly issueNumber?: number;
+  readonly body?: string;
+  readonly bodyFile?: string;
+  readonly cwd?: string;
 };
 
 export type JsonSuccessEnvelope<T> = {
@@ -382,6 +447,86 @@ cli
         handoverPath: result.handover.filePath,
         status: result.handover.snapshot.status,
       };
+    }),
+  );
+
+cli
+  .command("allocate run", "allocation core を実行して結果を永続化する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--risk-assessment-id <riskAssessmentId>",
+    "risk assessment レコード ID",
+  )
+  .action(
+    createEnvelopeAction(async (options: AllocateCommandOptions) => {
+      if (options.riskAssessmentId === undefined) {
+        throw new Error("--risk-assessment-id オプションは必須です。");
+      }
+
+      const result = await runAllocate({
+        riskAssessmentId: options.riskAssessmentId,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return {
+        riskAssessmentId: result.riskAssessmentId,
+        allocatedItems: result.items.length,
+        destinationCounts: result.destinationCounts,
+      };
+    }),
+  );
+
+cli
+  .command("allocate list", "allocation 結果を一覧表示する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--risk-assessment-id <riskAssessmentId>",
+    "risk assessment レコード ID",
+  )
+  .action(
+    createEnvelopeAction(async (options: AllocateCommandOptions) => {
+      if (options.riskAssessmentId === undefined) {
+        throw new Error("--risk-assessment-id オプションは必須です。");
+      }
+
+      const result = await listAllocation({
+        riskAssessmentId: options.riskAssessmentId,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return {
+        riskAssessmentId: result.riskAssessmentId,
+        items: result.items,
+        destinationCounts: result.destinationCounts,
+      };
+    }),
+  );
+
+cli
+  .command("allocate summary", "allocation の destination 別サマリーを返す")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--risk-assessment-id <riskAssessmentId>",
+    "risk assessment レコード ID",
+  )
+  .action(
+    createEnvelopeAction(async (options: AllocateCommandOptions) => {
+      if (options.riskAssessmentId === undefined) {
+        throw new Error("--risk-assessment-id オプションは必須です。");
+      }
+
+      const result = await summarizeAllocation({
+        riskAssessmentId: options.riskAssessmentId,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return result;
     }),
   );
 
@@ -838,6 +983,255 @@ cli
     }),
   );
 
+// ---------------------------------------------------------------------------
+// handoff commands (GitHub Issue integration)
+// ---------------------------------------------------------------------------
+
+cli
+  .command("handoff create-issue", "QA handoff Issue を GitHub に作成する")
+  .option("--repository <repository>", "リポジトリ名 (owner/repo 形式)")
+  .option("--title <title>", "Issue タイトル")
+  .option("--body <body>", "Issue 本文の Markdown")
+  .option("--body-file <bodyFile>", "Issue 本文 Markdown ファイルのパス")
+  .option("--label <label>", "ラベル（複数指定可）")
+  .option("--assignee <assignee>", "アサイン先（複数指定可）")
+  .option("--cwd <cwd>", "作業ディレクトリ (デフォルト: cwd)")
+  .action(
+    createEnvelopeAction(async (options: HandoffCreateCommandOptions) => {
+      if (!options.repository) {
+        throw new Error("--repository オプションは必須です。");
+      }
+      if (!options.title) {
+        throw new Error("--title オプションは必須です。");
+      }
+
+      const body = await readBodyOption(options.body, options.bodyFile);
+      if (!body) {
+        throw new Error("--body か --body-file のどちらかは必須です。");
+      }
+
+      const labels = normalizeArrayOption(options.label);
+      const assignees = normalizeArrayOption(options.assignee);
+
+      const result = await runCreateHandoffIssueRaw({
+        repositoryRoot: options.cwd ?? process.cwd(),
+        repository: options.repository,
+        title: options.title,
+        body,
+        labels: labels.length > 0 ? labels : undefined,
+        assignees: assignees.length > 0 ? assignees : undefined,
+      });
+
+      return {
+        issueNumber: result.issue.number,
+        issueUrl: result.issue.url,
+        title: result.issue.title,
+      };
+    }),
+  );
+
+cli
+  .command("handoff update-issue", "既存の QA handoff Issue の本文を更新する")
+  .option("--repository <repository>", "リポジトリ名 (owner/repo 形式)")
+  .option("--issue-number <issueNumber>", "Issue 番号")
+  .option("--body <body>", "更新後の Issue 本文の Markdown")
+  .option(
+    "--body-file <bodyFile>",
+    "更新後の Issue 本文 Markdown ファイルのパス",
+  )
+  .option("--cwd <cwd>", "作業ディレクトリ (デフォルト: cwd)")
+  .action(
+    createEnvelopeAction(async (options: HandoffUpdateCommandOptions) => {
+      if (!options.repository) {
+        throw new Error("--repository オプションは必須です。");
+      }
+      const issueNumber = validatePositiveIssueNumber(options.issueNumber);
+
+      const body = await readBodyOption(options.body, options.bodyFile);
+      if (!body) {
+        throw new Error("--body か --body-file のどちらかは必須です。");
+      }
+
+      await runUpdateHandoffIssueBody({
+        repositoryRoot: options.cwd ?? process.cwd(),
+        repository: options.repository,
+        issueNumber,
+        body,
+      });
+
+      return {
+        issueNumber,
+        updated: true,
+      };
+    }),
+  );
+
+cli
+  .command("handoff add-comment", "QA handoff Issue にコメントを追加する")
+  .option("--repository <repository>", "リポジトリ名 (owner/repo 形式)")
+  .option("--issue-number <issueNumber>", "Issue 番号")
+  .option("--body <body>", "コメント本文の Markdown")
+  .option("--body-file <bodyFile>", "コメント本文 Markdown ファイルのパス")
+  .option("--cwd <cwd>", "作業ディレクトリ (デフォルト: cwd)")
+  .action(
+    createEnvelopeAction(async (options: HandoffCommentCommandOptions) => {
+      if (!options.repository) {
+        throw new Error("--repository オプションは必須です。");
+      }
+      const issueNumber = validatePositiveIssueNumber(options.issueNumber);
+
+      const body = await readBodyOption(options.body, options.bodyFile);
+      if (!body) {
+        throw new Error("--body か --body-file のどちらかは必須です。");
+      }
+
+      const result = await runAddHandoffCommentRaw({
+        repositoryRoot: options.cwd ?? process.cwd(),
+        repository: options.repository,
+        issueNumber,
+        body,
+      });
+
+      return {
+        issueNumber,
+        commentUrl: result.comment.url,
+      };
+    }),
+  );
+
+cli
+  .command(
+    "handoff generate",
+    "allocation 結果から QA handoff Markdown を生成する",
+  )
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--risk-assessment-id <riskAssessmentId>",
+    "risk assessment レコード ID",
+  )
+  .action(
+    createEnvelopeAction(async (options: HandoffGenerateCommandOptions) => {
+      if (options.riskAssessmentId === undefined) {
+        throw new Error("--risk-assessment-id オプションは必須です。");
+      }
+
+      const result = await generateHandoffMarkdown({
+        riskAssessmentId: options.riskAssessmentId,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return {
+        riskAssessmentId: result.riskAssessmentId,
+        repository: result.repository,
+        markdown: result.markdown,
+        summary: result.summary,
+      };
+    }),
+  );
+
+cli
+  .command("handoff publish", "allocation 結果から QA handoff Issue を作成する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--risk-assessment-id <riskAssessmentId>",
+    "risk assessment レコード ID",
+  )
+  .option("--title <title>", "Issue タイトル")
+  .option("--label <label>", "ラベル（複数指定可）")
+  .option("--assignee <assignee>", "アサイン先（複数指定可）")
+  .action(
+    createEnvelopeAction(async (options: HandoffPublishCommandOptions) => {
+      if (options.riskAssessmentId === undefined) {
+        throw new Error("--risk-assessment-id オプションは必須です。");
+      }
+
+      const labels = normalizeArrayOption(options.label);
+      const assignees = normalizeArrayOption(options.assignee);
+      const result = await runCreateHandoffIssue({
+        riskAssessmentId: options.riskAssessmentId,
+        title: options.title,
+        labels: labels.length > 0 ? labels : undefined,
+        assignees: assignees.length > 0 ? assignees : undefined,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return {
+        riskAssessmentId: result.markdown.riskAssessmentId,
+        issueNumber: result.issue.number,
+        issueUrl: result.issue.url,
+        title: result.issue.title,
+      };
+    }),
+  );
+
+cli
+  .command("handoff update", "allocation 結果から QA handoff Issue を更新する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--risk-assessment-id <riskAssessmentId>",
+    "risk assessment レコード ID",
+  )
+  .option("--issue-number <issueNumber>", "Issue 番号")
+  .action(
+    createEnvelopeAction(
+      async (options: HandoffAllocationUpdateCommandOptions) => {
+        if (options.riskAssessmentId === undefined) {
+          throw new Error("--risk-assessment-id オプションは必須です。");
+        }
+        const issueNumber = validatePositiveIssueNumber(options.issueNumber);
+
+        const result = await runUpdateHandoffIssue({
+          riskAssessmentId: options.riskAssessmentId,
+          issueNumber,
+          configPath: options.config,
+          manifestPath: options.manifest,
+        });
+
+        return {
+          riskAssessmentId: result.markdown.riskAssessmentId,
+          issueNumber: result.issueNumber,
+          updated: true,
+        };
+      },
+    ),
+  );
+
+cli
+  .command(
+    "handoff add-findings",
+    "session findings を QA handoff Issue に追記する",
+  )
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--issue-number <issueNumber>", "Issue 番号")
+  .option("--session-id <sessionId>", "Session ID")
+  .action(
+    createEnvelopeAction(async (options: HandoffFindingsCommandOptions) => {
+      const issueNumber = validatePositiveIssueNumber(options.issueNumber);
+
+      if (options.sessionId === undefined) {
+        throw new Error("--session-id オプションは必須です。");
+      }
+
+      const result = await runAddHandoffComment({
+        issueNumber,
+        sessionId: options.sessionId,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return {
+        issueNumber,
+        commentUrl: result.comment.url,
+      };
+    }),
+  );
+
 cli.help();
 export async function main(argv: string[] = process.argv): Promise<void> {
   try {
@@ -867,4 +1261,23 @@ async function readBodyOption(
   }
 
   return inlineBody ?? null;
+}
+
+function normalizeArrayOption(
+  value: string | string[] | undefined,
+): readonly string[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value;
+  }
+  return [value];
+}
+
+function validatePositiveIssueNumber(value: number | undefined): number {
+  if (value === undefined || !Number.isInteger(value) || value <= 0) {
+    throw new Error("--issue-number は正の整数を指定してください。");
+  }
+  return value;
 }

@@ -11,14 +11,14 @@ description: 最終的な exploratory testing brief、charters、findings report
 
 ## 前提条件
 
-- `setup`、`pr-intake`、`discover-context`、`map-tests`、`assess-gaps`、`generate-charters`、`run-session`、`triage-findings` が完了していること。
+- `setup`、`pr-intake`、`discover-context`、`map-tests`、`assess-gaps`、`allocate`、`handoff`、`generate-charters`、`run-session`、`triage-findings` が完了していること。
 - 出力したい PR の `pr-intake` record ID を把握していること。
 
 ## 実行手順
 
 1. `bun run dev export-artifacts --pr-intake-id <id>` を実行する。
 2. `output/` に `exploration-brief.md`、`coverage-gap-map.md`、`session-charters.md`、`findings-report.md`、`automation-candidate-report.md` が出力されることを確認する。
-3. 最終 handover は `.exploratory-testing/progress/09-export-artifacts.md` を読む。
+3. 最終 handover は `.exploratory-testing/progress/11-export-artifacts.md` を読む。
 
 ## 再開方法
 

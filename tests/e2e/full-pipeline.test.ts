@@ -1,5 +1,5 @@
 /**
- * Tool-chain integration test for the full 9-step pipeline.
+ * Tool-chain integration test for the full 11-step pipeline.
  *
  * Drives the pipeline via tool functions (not CLI entry point / gh CLI).
  * Uses the "OrderFlow" fixture designed to trigger all 10 change categories.
@@ -12,11 +12,14 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   findSession,
+  listAllocationItemsByDestination,
   listFindings,
   listObservations,
   listStepProgressSnapshots,
 } from "../../src/exploratory-testing/db/workspace-repository";
 import type { ResolvedPluginConfig } from "../../src/exploratory-testing/models/config";
+import { runAllocate } from "../../src/exploratory-testing/tools/allocate";
+import type { AllocateResult } from "../../src/exploratory-testing/tools/allocate";
 import { runAssessGapsFromMapping } from "../../src/exploratory-testing/tools/assess-gaps";
 import type { AssessGapsResult } from "../../src/exploratory-testing/tools/assess-gaps";
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
@@ -24,7 +27,7 @@ import { runDiscoverContextFromIntake } from "../../src/exploratory-testing/tool
 import type { DiscoverContextResult } from "../../src/exploratory-testing/tools/discover-context";
 import { exportArtifacts } from "../../src/exploratory-testing/tools/export-artifacts";
 import type { ExportArtifactsResult } from "../../src/exploratory-testing/tools/export-artifacts";
-import { runGenerateChartersFromAssessment } from "../../src/exploratory-testing/tools/generate-charters";
+import { runGenerateChartersFromAllocation } from "../../src/exploratory-testing/tools/generate-charters";
 import type { GenerateChartersResult } from "../../src/exploratory-testing/tools/generate-charters";
 import { runMapTestsFromAnalysis } from "../../src/exploratory-testing/tools/map-tests";
 import type { MapTestsResult } from "../../src/exploratory-testing/tools/map-tests";
@@ -59,6 +62,7 @@ type FullPipelineResult = {
   readonly context: DiscoverContextResult;
   readonly mapping: MapTestsResult;
   readonly assess: AssessGapsResult;
+  readonly allocate: AllocateResult;
   readonly charters: GenerateChartersResult;
   readonly session: StartSessionResult;
   readonly exportResult: ExportArtifactsResult;
@@ -110,14 +114,29 @@ async function runFullPipeline(
     config,
   );
 
-  // Step 6: generate-charters
-  const charters = await runGenerateChartersFromAssessment(
+  // Step 6: allocate
+  const allocateResult = await runAllocate({
+    riskAssessmentId: assess.persisted.id,
+    configPath: workspace.configPath,
+    manifestPath: workspace.manifestPath,
+  });
+
+  // Step 7: handoff (skipped in tests — requires GitHub API)
+
+  // Step 8: generate-charters (manual-exploration items only)
+  const manualItems = listAllocationItemsByDestination(
+    databasePath,
+    assess.persisted.id,
+    "manual-exploration",
+  );
+  const charters = await runGenerateChartersFromAllocation(
     assess.persisted,
+    manualItems,
     mapping.persisted.coverageGapMap,
     config,
   );
 
-  // Step 7: run-session (charter 0 only, no siblings → step completed)
+  // Step 9: run-session (charter 0 only, no siblings → step completed)
   const session = await startSession({
     sessionChartersId: charters.persisted.id,
     charterIndex: 0,
@@ -153,7 +172,7 @@ async function runFullPipeline(
 
   await completeSession({ sessionId: session.session.id, config });
 
-  // Step 8: triage-findings
+  // Step 10: triage-findings
   const observations = listObservations(databasePath, session.session.id);
   const failObs = observations.find((o) => o.outcome === "fail");
   const passObs = observations.find((o) => o.outcome === "pass");
@@ -191,7 +210,7 @@ async function runFullPipeline(
 
   await writeTriageHandover({ sessionId: session.session.id, config });
 
-  // Step 9: export-artifacts
+  // Step 11: export-artifacts
   const exportResult = await exportArtifacts({
     prIntakeId: prIntake.persisted.id,
     config,
@@ -204,6 +223,7 @@ async function runFullPipeline(
     context,
     mapping,
     assess,
+    allocate: allocateResult,
     charters,
     session,
     exportResult,
@@ -232,18 +252,21 @@ describe("full pipeline integration", { timeout: 30_000 }, () => {
   }
 
   // -----------------------------------------------------------------------
-  // T1: Progress snapshots show all 9 steps completed
+  // T1: Progress snapshots show all 11 steps (handoff skipped)
   // -----------------------------------------------------------------------
-  it("T1: all 9 steps reach completed status in progress snapshots", async () => {
+  it("T1: all 11 steps present in progress snapshots, handoff pending", async () => {
     const { result } = await setup();
     const snapshots = listStepProgressSnapshots(result.databasePath);
 
-    expect(snapshots).toHaveLength(9);
+    expect(snapshots).toHaveLength(11);
 
-    const nonCompleted = snapshots.filter((s) => s.status !== "completed");
+    // handoff is skipped in tests (requires GitHub API), so it stays pending
+    const nonCompleted = snapshots.filter(
+      (s) => s.status !== "completed" && s.stepName !== "handoff",
+    );
     expect(
       nonCompleted,
-      `Expected all steps completed, but found: ${nonCompleted.map((s) => `${s.stepName}=${s.status}`).join(", ")}`,
+      `Expected all non-handoff steps completed, but found: ${nonCompleted.map((s) => `${s.stepName}=${s.status}`).join(", ")}`,
     ).toHaveLength(0);
 
     // Spot-check: representative handover files exist

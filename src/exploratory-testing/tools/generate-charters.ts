@@ -1,15 +1,19 @@
 import { generateSessionCharters } from "../analysis/generate-session-charters";
 import {
+  type PersistedAllocationItem,
   type PersistedRiskAssessment,
   type PersistedSessionCharters,
   findChangeAnalysis,
   findPrIntake,
   findRiskAssessment,
   findTestMapping,
+  listAllocationItems,
+  listAllocationItemsByDestination,
   saveSessionCharters,
 } from "../db/workspace-repository";
 import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
+import type { ExplorationTheme } from "../models/risk-assessment";
 import type {
   SessionCharter,
   SessionCharterGenerationResult,
@@ -81,22 +85,42 @@ export async function runGenerateCharters(
     );
   }
 
-  return runGenerateChartersFromAssessment(
+  const allocationItems = listAllocationItems(
+    config.paths.database,
+    riskAssessment.id,
+  );
+
+  if (allocationItems.length === 0) {
+    throw new Error(
+      `Allocation items not found for risk_assessment_id=${riskAssessment.id}. Run allocate run first.`,
+    );
+  }
+
+  const manualItems = listAllocationItemsByDestination(
+    config.paths.database,
+    riskAssessment.id,
+    "manual-exploration",
+  );
+
+  return runGenerateChartersFromAllocation(
     riskAssessment,
+    manualItems,
     testMapping.coverageGapMap,
     config,
   );
 }
 
-export async function runGenerateChartersFromAssessment(
+export async function runGenerateChartersFromAllocation(
   riskAssessment: PersistedRiskAssessment,
+  manualItems: readonly PersistedAllocationItem[],
   coverageGapMap: readonly CoverageGapEntry[],
   config: ResolvedPluginConfig,
 ): Promise<GenerateChartersResult> {
-  const charters = generateSessionCharters(
+  const filteredThemes = filterThemesByAllocation(
     riskAssessment.explorationThemes,
-    coverageGapMap,
+    manualItems,
   );
+  const charters = generateSessionCharters(filteredThemes, coverageGapMap);
 
   const generationResult: SessionCharterGenerationResult = {
     riskAssessmentId: riskAssessment.id,
@@ -114,25 +138,42 @@ export async function runGenerateChartersFromAssessment(
   const handover = await writeStepHandoverFromConfig(config, {
     stepName: "generate-charters",
     status: "completed",
-    summary: buildHandoverSummary(
-      charters,
-      riskAssessment.explorationThemes.length,
-    ),
+    summary: buildHandoverSummary(charters, manualItems.length),
     body,
   });
 
   return { persisted, handover };
 }
 
+export function filterThemesByAllocation(
+  themes: readonly ExplorationTheme[],
+  manualItems: readonly PersistedAllocationItem[],
+): readonly ExplorationTheme[] {
+  if (manualItems.length === 0) {
+    return [];
+  }
+
+  const manualFilePaths = new Set(
+    manualItems.flatMap((item) => item.changedFilePaths),
+  );
+
+  // `dev-box` items are intentionally excluded here because they should be
+  // verified by the implementer before QA handoff, not converted into
+  // exploratory charters for the later manual session phase.
+  return themes.filter((theme) =>
+    theme.targetFiles.some((file) => manualFilePaths.has(file)),
+  );
+}
+
 function buildHandoverSummary(
   charters: readonly SessionCharter[],
-  themeCount: number,
+  manualItemCount: number,
 ): string {
   const distinctFrameworks = [
     ...new Set(charters.flatMap((c) => c.selectedFrameworks)),
   ];
   const totalMinutes = charters.reduce((sum, c) => sum + c.timeboxMinutes, 0);
-  return `Generated ${charters.length} charters from ${themeCount} themes; frameworks: ${distinctFrameworks.join(", ")}; total timebox: ${totalMinutes}min`;
+  return `Generated ${charters.length} charters from ${manualItemCount} manual-exploration items; frameworks: ${distinctFrameworks.join(", ")}; total timebox: ${totalMinutes}min`;
 }
 
 function buildHandoverBody(charters: PersistedSessionCharters): string {

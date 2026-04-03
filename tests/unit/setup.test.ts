@@ -46,7 +46,7 @@ describe("initializeWorkspace", () => {
     expect(summary.frontmatter.completed_steps).toBe(1);
     expect(setupDocument.frontmatter.step_name).toBe("setup");
     expect(setupDocument.frontmatter.status).toBe("completed");
-    expect(snapshots).toHaveLength(9);
+    expect(snapshots).toHaveLength(11);
     expect(snapshots[0]?.status).toBe("completed");
     expect(snapshots[1]?.status).toBe("pending");
   });

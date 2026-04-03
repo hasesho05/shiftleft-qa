@@ -474,6 +474,8 @@ cli
         riskAssessmentId: result.riskAssessmentId,
         allocatedItems: result.items.length,
         destinationCounts: result.destinationCounts,
+        handoverPath: result.handover.filePath,
+        status: result.handover.snapshot.status,
       };
     }),
   );

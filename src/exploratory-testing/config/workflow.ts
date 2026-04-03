@@ -37,6 +37,18 @@ export const WORKFLOW_SKILLS = [
     description: "Identify coverage gaps and select exploratory heuristics.",
   },
   {
+    name: "allocate",
+    title: "Allocate testing destinations",
+    path: "skills/allocate/SKILL.md",
+    description: "Allocate coverage gaps to testing destinations.",
+  },
+  {
+    name: "handoff",
+    title: "QA handoff",
+    path: "skills/handoff/SKILL.md",
+    description: "Create QA handoff issue on GitHub.",
+  },
+  {
     name: "generate-charters",
     title: "Generate session charters",
     path: "skills/generate-charters/SKILL.md",

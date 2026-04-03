@@ -157,34 +157,35 @@ function groupByOverlappingSignals(
   items: readonly PersistedAllocationItem[],
 ): PersistedAllocationItem[][] {
   // Greedy grouping: items share a group if they have overlapping riskSignals (transitive via group merge)
-  const groups: PersistedAllocationItem[][] = [];
+  const groups: { items: PersistedAllocationItem[]; signals: Set<string> }[] =
+    [];
 
   for (const item of items) {
-    const signals = new Set(item.sourceSignals.riskSignals);
+    const itemSignals = item.sourceSignals.riskSignals;
     let merged = false;
 
-    for (const group of groups) {
-      const groupSignals = new Set(
-        group.flatMap((g) => g.sourceSignals.riskSignals),
-      );
-      const hasOverlap =
-        signals.size > 0 &&
-        groupSignals.size > 0 &&
-        [...signals].some((s) => groupSignals.has(s));
-
-      if (hasOverlap) {
-        group.push(item);
-        merged = true;
-        break;
+    if (itemSignals.length > 0) {
+      for (const group of groups) {
+        if (itemSignals.some((s) => group.signals.has(s))) {
+          group.items.push(item);
+          for (const s of itemSignals) {
+            group.signals.add(s);
+          }
+          merged = true;
+          break;
+        }
       }
     }
 
     if (!merged) {
-      groups.push([item]);
+      groups.push({
+        items: [item],
+        signals: new Set(itemSignals),
+      });
     }
   }
 
-  return groups;
+  return groups.map((g) => g.items);
 }
 
 function applyBudgetConstraint(

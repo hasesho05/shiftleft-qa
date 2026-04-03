@@ -282,17 +282,38 @@ function buildHandoverBody(
     lines.push("");
   }
 
-  if (droppedItems.length > 0) {
+  const budgetDropped = droppedItems.filter(
+    (d) => d.reason === "budget-exceeded",
+  );
+  const redundantDropped = droppedItems.filter(
+    (d) => d.reason === "duplicate" || d.reason === "dev-box-covered",
+  );
+
+  if (budgetDropped.length > 0) {
     lines.push(
       "## Deprioritized (available if time permits)",
       "",
-      "| Title | Risk | Reason | Est. |",
-      "| --- | --- | --- | --- |",
+      "| Title | Risk | Est. |",
+      "| --- | --- | --- |",
     );
-
-    for (const dropped of droppedItems) {
+    for (const dropped of budgetDropped) {
       lines.push(
-        `| ${escapePipe(dropped.title)} | ${dropped.riskLevel} | ${dropped.reason} | ${dropped.estimatedMinutes}min |`,
+        `| ${escapePipe(dropped.title)} | ${dropped.riskLevel} | ${dropped.estimatedMinutes}min |`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (redundantDropped.length > 0) {
+    lines.push(
+      "## Redundant (merged or already covered)",
+      "",
+      "| Title | Risk | Reason |",
+      "| --- | --- | --- |",
+    );
+    for (const dropped of redundantDropped) {
+      lines.push(
+        `| ${escapePipe(dropped.title)} | ${dropped.riskLevel} | ${dropped.reason} |`,
       );
     }
     lines.push("");

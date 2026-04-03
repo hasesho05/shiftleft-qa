@@ -38,6 +38,7 @@ import {
   runCreateHandoffIssue,
   runUpdateHandoffIssue,
 } from "../../src/exploratory-testing/tools/handoff";
+import { readStepHandoverDocument } from "../../src/exploratory-testing/tools/progress";
 import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
 import type { generateTriageReport } from "../../src/exploratory-testing/tools/triage-findings";
 import {
@@ -379,6 +380,14 @@ describe("handoff tool", () => {
       }),
     );
     expect(result.issue.number).toBe(42);
+
+    const handover = await readStepHandoverDocument(
+      `${workspace.root}/.exploratory-testing/progress/07-handoff.md`,
+    );
+    expect(handover.frontmatter.step_name).toBe("handoff");
+    expect(handover.frontmatter.status).toBe("completed");
+    expect(handover.body).toContain("Issue Number");
+    expect(handover.body).toContain("generate-charters");
   });
 
   it("updates an existing issue body from allocation data", async () => {
@@ -402,6 +411,13 @@ describe("handoff tool", () => {
       }),
     );
     expect(result.issueNumber).toBe(77);
+
+    const handover = await readStepHandoverDocument(
+      `${workspace.root}/.exploratory-testing/progress/07-handoff.md`,
+    );
+    expect(handover.frontmatter.step_name).toBe("handoff");
+    expect(handover.frontmatter.status).toBe("completed");
+    expect(handover.body).toContain("Issue Number");
   });
 
   it("renders findings and posts them as a comment", async () => {

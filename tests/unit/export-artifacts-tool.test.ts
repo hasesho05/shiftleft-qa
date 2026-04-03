@@ -239,7 +239,7 @@ describe("export-artifacts tool", () => {
       config,
     });
 
-    expect(result.handover.filePath).toMatch(/09-export-artifacts\.md$/);
+    expect(result.handover.filePath).toMatch(/11-export-artifacts\.md$/);
   });
 
   it("rejects when prIntakeId does not exist", async () => {

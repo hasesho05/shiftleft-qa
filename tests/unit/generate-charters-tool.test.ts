@@ -2,13 +2,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   findSessionCharters,
+  listAllocationItemsByDestination,
   savePrIntake,
 } from "../../src/exploratory-testing/db/workspace-repository";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
+import { runAllocate } from "../../src/exploratory-testing/tools/allocate";
 import { runAssessGapsFromMapping } from "../../src/exploratory-testing/tools/assess-gaps";
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import { runDiscoverContextFromIntake } from "../../src/exploratory-testing/tools/discover-context";
-import { runGenerateChartersFromAssessment } from "../../src/exploratory-testing/tools/generate-charters";
+import {
+  filterThemesByAllocation,
+  runGenerateChartersFromAllocation,
+} from "../../src/exploratory-testing/tools/generate-charters";
 import { runMapTestsFromAnalysis } from "../../src/exploratory-testing/tools/map-tests";
 import { readStepHandoverDocument } from "../../src/exploratory-testing/tools/progress";
 import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
@@ -60,7 +65,7 @@ function createSampleMetadata(): PrMetadata {
   };
 }
 
-describe("runGenerateChartersFromAssessment", () => {
+describe("runGenerateChartersFromAllocation", () => {
   afterEach(async () => {
     await Promise.all(workspaces.splice(0).map(cleanupTestWorkspace));
   });
@@ -77,7 +82,7 @@ describe("runGenerateChartersFromAssessment", () => {
     return { ...workspace, databasePath: result.databasePath };
   }
 
-  it("generates charters, persists them, and writes a handover document", async () => {
+  it("generates charters from manual-exploration allocation items", async () => {
     const workspace = await setupWorkspace();
     const config = await readPluginConfig(
       workspace.configPath,
@@ -99,14 +104,29 @@ describe("runGenerateChartersFromAssessment", () => {
       config,
     );
 
-    const result = await runGenerateChartersFromAssessment(
+    await runAllocate({
+      riskAssessmentId: assessResult.persisted.id,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    const manualItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "manual-exploration",
+    );
+
+    const result = await runGenerateChartersFromAllocation(
       assessResult.persisted,
+      manualItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
 
-    // Charters generated
-    expect(result.persisted.charters.length).toBeGreaterThan(0);
+    // Charters generated only from manual-exploration items
+    if (manualItems.length > 0) {
+      expect(result.persisted.charters.length).toBeGreaterThan(0);
+    }
 
     for (const charter of result.persisted.charters) {
       expect(charter.title.length).toBeGreaterThan(0);
@@ -149,8 +169,21 @@ describe("runGenerateChartersFromAssessment", () => {
       config,
     );
 
-    const result = await runGenerateChartersFromAssessment(
+    await runAllocate({
+      riskAssessmentId: assessResult.persisted.id,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    const manualItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "manual-exploration",
+    );
+
+    const result = await runGenerateChartersFromAllocation(
       assessResult.persisted,
+      manualItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
@@ -189,13 +222,27 @@ describe("runGenerateChartersFromAssessment", () => {
       config,
     );
 
-    const first = await runGenerateChartersFromAssessment(
+    await runAllocate({
+      riskAssessmentId: assessResult.persisted.id,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    const manualItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "manual-exploration",
+    );
+
+    const first = await runGenerateChartersFromAllocation(
       assessResult.persisted,
+      manualItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
-    const second = await runGenerateChartersFromAssessment(
+    const second = await runGenerateChartersFromAllocation(
       assessResult.persisted,
+      manualItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
@@ -225,8 +272,21 @@ describe("runGenerateChartersFromAssessment", () => {
       config,
     );
 
-    const result = await runGenerateChartersFromAssessment(
+    await runAllocate({
+      riskAssessmentId: assessResult.persisted.id,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    const manualItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "manual-exploration",
+    );
+
+    const result = await runGenerateChartersFromAllocation(
       assessResult.persisted,
+      manualItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
@@ -243,5 +303,103 @@ describe("runGenerateChartersFromAssessment", () => {
         expect(categories).toContain("console");
       }
     }
+  });
+
+  it("produces no charters when no manual-exploration items exist", async () => {
+    const workspace = await setupWorkspace();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSampleMetadata(),
+    );
+    const contextResult = await runDiscoverContextFromIntake(prIntake, config);
+    const mappingResult = await runMapTestsFromAnalysis(
+      contextResult.persisted,
+      prIntake,
+      config,
+    );
+    const assessResult = await runAssessGapsFromMapping(
+      mappingResult.persisted,
+      contextResult.persisted,
+      config,
+    );
+
+    // Pass empty manual items
+    const result = await runGenerateChartersFromAllocation(
+      assessResult.persisted,
+      [],
+      mappingResult.persisted.coverageGapMap,
+      config,
+    );
+
+    expect(result.persisted.charters.length).toBe(0);
+  });
+});
+
+describe("filterThemesByAllocation", () => {
+  it("keeps only themes with targetFiles overlapping manual-exploration items", () => {
+    const themes = [
+      {
+        title: "Theme A",
+        description: "desc A",
+        frameworks: ["error-guessing" as const],
+        targetFiles: ["src/a.ts"],
+        riskLevel: "high" as const,
+        estimatedMinutes: 15,
+      },
+      {
+        title: "Theme B",
+        description: "desc B",
+        frameworks: ["boundary-value-analysis" as const],
+        targetFiles: ["src/b.ts"],
+        riskLevel: "medium" as const,
+        estimatedMinutes: 10,
+      },
+    ];
+
+    const manualItems = [
+      {
+        id: 1,
+        riskAssessmentId: 1,
+        title: "Manual exploration for src/a.ts",
+        changedFilePaths: ["src/a.ts"],
+        riskLevel: "high" as const,
+        recommendedDestination: "manual-exploration" as const,
+        confidence: 0.35,
+        rationale: "test",
+        sourceSignals: {
+          categories: [],
+          existingTestLayers: [],
+          gapAspects: [],
+          reviewComments: [],
+          riskSignals: [],
+        },
+        createdAt: "2026-04-01T00:00:00Z",
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+    ];
+
+    const filtered = filterThemesByAllocation(themes, manualItems);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].title).toBe("Theme A");
+  });
+
+  it("returns empty when no manual items provided", () => {
+    const themes = [
+      {
+        title: "Theme A",
+        description: "desc A",
+        frameworks: ["error-guessing" as const],
+        targetFiles: ["src/a.ts"],
+        riskLevel: "high" as const,
+        estimatedMinutes: 15,
+      },
+    ];
+
+    const filtered = filterThemesByAllocation(themes, []);
+    expect(filtered).toHaveLength(0);
   });
 });

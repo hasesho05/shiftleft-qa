@@ -23,6 +23,7 @@ import {
   editIssueBody,
 } from "../scm/github-issues";
 import { readPluginConfig } from "./config";
+import { writeStepHandoverFromConfig } from "./progress";
 import { generateTriageReport } from "./triage-findings";
 
 export type { AddCommentInput, CreateIssueInput, EditIssueInput };
@@ -138,6 +139,13 @@ export async function runCreateHandoffIssue(
     assignees: input.assignees,
   });
 
+  await writeStepHandoverFromConfig(config, {
+    stepName: "handoff",
+    status: "completed",
+    summary: buildHandoffProgressSummary(markdown.summary, issue.number),
+    body: buildHandoffProgressBody(markdown, issue.number, issue.url),
+  });
+
   return { markdown, issue };
 }
 
@@ -159,6 +167,13 @@ export async function runUpdateHandoffIssue(
     repository: markdown.repository,
     issueNumber: input.issueNumber,
     body: markdown.markdown,
+  });
+
+  await writeStepHandoverFromConfig(config, {
+    stepName: "handoff",
+    status: "completed",
+    summary: buildHandoffProgressSummary(markdown.summary, input.issueNumber),
+    body: buildHandoffProgressBody(markdown, input.issueNumber),
   });
 
   return {
@@ -375,6 +390,47 @@ function buildHandoffSummary(
       counts.unit + counts.integration + counts.e2e + counts.visual,
     coveredCount: counts.skip + counts.review,
   };
+}
+
+function buildHandoffProgressSummary(
+  summary: HandoffSummary,
+  issueNumber: number,
+): string {
+  return `Published QA handoff issue #${issueNumber}; manual: ${summary.manualCount}; automate: ${summary.automateCount}; covered: ${summary.coveredCount}`;
+}
+
+function buildHandoffProgressBody(
+  markdown: HandoffMarkdownResult,
+  issueNumber: number,
+  issueUrl?: string,
+): string {
+  const lines = [
+    `# QA Handoff Published (risk_assessment_id: ${markdown.riskAssessmentId})`,
+    "",
+    `- **Issue Number**: ${issueNumber}`,
+    `- **Repository**: ${escapePipe(markdown.repository)}`,
+  ];
+
+  if (issueUrl) {
+    lines.push(`- **Issue URL**: ${issueUrl}`);
+  }
+
+  lines.push(
+    "",
+    "## Allocation Summary",
+    "",
+    `- Total items: ${markdown.summary.totalItems}`,
+    `- Manual exploration: ${markdown.summary.manualCount}`,
+    `- Should automate: ${markdown.summary.automateCount}`,
+    `- Already covered: ${markdown.summary.coveredCount}`,
+    "",
+    "## Next step",
+    "",
+    "- generate-charters",
+    "",
+  );
+
+  return lines.join("\n");
 }
 
 async function resolveHandoffContext(

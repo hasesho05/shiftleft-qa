@@ -39,6 +39,16 @@
       "description": "Identify coverage gaps and select exploratory heuristics."
     },
     {
+      "name": "allocate",
+      "path": "skills/allocate/SKILL.md",
+      "description": "Allocate coverage gaps to testing destinations."
+    },
+    {
+      "name": "handoff",
+      "path": "skills/handoff/SKILL.md",
+      "description": "Create QA handoff issue on GitHub."
+    },
+    {
       "name": "generate-charters",
       "path": "skills/generate-charters/SKILL.md",
       "description": "Generate short, executable exploratory session charters."

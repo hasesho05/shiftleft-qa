@@ -135,7 +135,7 @@ bun run check
 
 ## End-to-end workflow
 
-The plugin follows a 9-step linear workflow. Each step produces structured output that feeds the next.
+The plugin follows an 11-step linear workflow. Each step produces structured output that feeds the next.
 
 ```bash
 # 1. Initialize workspace
@@ -153,19 +153,25 @@ bun run dev map-tests --pr <number> --provider github --repository owner/repo
 # 5. Score risk, select frameworks, generate exploration themes
 bun run dev assess-gaps --pr <number> --provider github --repository owner/repo
 
-# 6. Generate session charters
+# 6. Allocate coverage gaps to testing destinations
+bun run dev allocate run --risk-assessment-id <id>
+
+# 7. Create QA handoff issue
+bun run dev handoff publish --risk-assessment-id <id>
+
+# 8. Generate session charters (manual-exploration items only)
 bun run dev generate-charters --pr <number> --provider github --repository owner/repo
 
-# 7. Run exploratory sessions
+# 9. Run exploratory sessions
 bun run dev session start --session-charters-id <id> --charter-index 0
 bun run dev session observe --session <id> --heuristic "..." --action "..." --expected "..." --actual "..." --outcome pass
 bun run dev session complete --session <id>
 
-# 8. Triage findings
+# 10. Triage findings
 bun run dev finding add --session <id> --observation <id> --type defect --title "..." --description "..." --severity high
 bun run dev finding handover --session <id>
 
-# 9. Export final artifacts
+# 11. Export final artifacts
 bun run dev export-artifacts --pr-intake-id <id>
 ```
 
@@ -173,7 +179,7 @@ All state is stored in the local SQLite database and progress files. Sessions ca
 
 ### Output artifacts
 
-After step 9, the `output/` directory contains:
+After step 11, the `output/` directory contains:
 
 | File | Description |
 |---|---|

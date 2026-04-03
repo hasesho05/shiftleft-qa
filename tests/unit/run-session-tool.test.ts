@@ -2,14 +2,16 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   findSession,
+  listAllocationItemsByDestination,
   listObservations,
   savePrIntake,
 } from "../../src/exploratory-testing/db/workspace-repository";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
+import { runAllocate } from "../../src/exploratory-testing/tools/allocate";
 import { runAssessGapsFromMapping } from "../../src/exploratory-testing/tools/assess-gaps";
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import { runDiscoverContextFromIntake } from "../../src/exploratory-testing/tools/discover-context";
-import { runGenerateChartersFromAssessment } from "../../src/exploratory-testing/tools/generate-charters";
+import { runGenerateChartersFromAllocation } from "../../src/exploratory-testing/tools/generate-charters";
 import { runMapTestsFromAnalysis } from "../../src/exploratory-testing/tools/map-tests";
 import { readStepHandoverDocument } from "../../src/exploratory-testing/tools/progress";
 import {
@@ -52,6 +54,13 @@ function createSampleMetadata(): PrMetadata {
         status: "added",
         additions: 80,
         deletions: 0,
+        previousPath: null,
+      },
+      {
+        path: "src/domain/order-calculator.ts",
+        status: "modified",
+        additions: 24,
+        deletions: 3,
         previousPath: null,
       },
     ],
@@ -102,8 +111,21 @@ describe("run-session tool", () => {
       contextResult.persisted,
       config,
     );
-    const charterResult = await runGenerateChartersFromAssessment(
+    await runAllocate({
+      riskAssessmentId: assessResult.persisted.id,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    const manualItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "manual-exploration",
+    );
+
+    const charterResult = await runGenerateChartersFromAllocation(
       assessResult.persisted,
+      manualItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );

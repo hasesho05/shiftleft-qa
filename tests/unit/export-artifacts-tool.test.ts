@@ -4,12 +4,20 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  saveChangeAnalysis,
   saveFinding,
   saveObservation,
   savePrIntake,
+  saveRiskAssessment,
   saveSession,
+  saveSessionCharters,
+  saveTestMapping,
   updateSessionStatus,
 } from "../../src/exploratory-testing/db/workspace-repository";
+import type { ChangeAnalysisResult } from "../../src/exploratory-testing/models/change-analysis";
+import type { RiskAssessmentResult } from "../../src/exploratory-testing/models/risk-assessment";
+import type { SessionCharterGenerationResult } from "../../src/exploratory-testing/models/session-charter";
+import type { TestMappingResult } from "../../src/exploratory-testing/models/test-mapping";
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import {
   type ExportArtifactsResult,
@@ -266,47 +274,244 @@ describe("export-artifacts tool", () => {
     expect(content1).toBe(content2);
   });
 
-  it("rejects when change analysis is missing", async () => {
-    const workspace = await createTestWorkspace();
-    workspaces.push(workspace.root);
-    const result = await initializeWorkspace(
-      workspace.configPath,
-      workspace.manifestPath,
-    );
-    const config = await readPluginConfig(
-      workspace.configPath,
-      workspace.manifestPath,
-    );
+  describe("prerequisite validation", () => {
+    it("rejects when change analysis is missing", async () => {
+      const workspace = await createTestWorkspace();
+      workspaces.push(workspace.root);
+      const result = await initializeWorkspace(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
 
-    savePrIntake(result.databasePath, createSamplePrMetadata());
+      savePrIntake(result.databasePath, createSamplePrMetadata());
 
-    await expect(exportArtifacts({ prIntakeId: 1, config })).rejects.toThrow(
-      /Change analysis not found.*discover-context/,
-    );
+      await expect(exportArtifacts({ prIntakeId: 1, config })).rejects.toThrow(
+        /Change analysis not found.*discover-context/,
+      );
+    });
+
+    it("rejects when test mapping is missing", async () => {
+      const workspace = await createTestWorkspace();
+      workspaces.push(workspace.root);
+      const result = await initializeWorkspace(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const prIntake = savePrIntake(
+        result.databasePath,
+        createSamplePrMetadata(),
+      );
+      saveChangeAnalysis(result.databasePath, {
+        prIntakeId: prIntake.id,
+        fileAnalyses: [],
+        relatedCodes: [],
+        viewpointSeeds: [],
+        summary: "test",
+        analyzedAt: "2026-04-01T00:00:00Z",
+      } satisfies ChangeAnalysisResult);
+
+      await expect(exportArtifacts({ prIntakeId: 1, config })).rejects.toThrow(
+        /Test mapping not found.*map-tests/,
+      );
+    });
+
+    it("rejects when risk assessment is missing", async () => {
+      const workspace = await createTestWorkspace();
+      workspaces.push(workspace.root);
+      const result = await initializeWorkspace(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const prIntake = savePrIntake(
+        result.databasePath,
+        createSamplePrMetadata(),
+      );
+      const ca = saveChangeAnalysis(result.databasePath, {
+        prIntakeId: prIntake.id,
+        fileAnalyses: [],
+        relatedCodes: [],
+        viewpointSeeds: [],
+        summary: "test",
+        analyzedAt: "2026-04-01T00:00:00Z",
+      } satisfies ChangeAnalysisResult);
+      saveTestMapping(result.databasePath, {
+        prIntakeId: prIntake.id,
+        changeAnalysisId: ca.id,
+        testAssets: [],
+        testSummaries: [],
+        coverageGapMap: [],
+        missingLayers: [],
+        mappedAt: "2026-04-01T00:00:00Z",
+      } satisfies TestMappingResult);
+
+      await expect(exportArtifacts({ prIntakeId: 1, config })).rejects.toThrow(
+        /Risk assessment not found.*assess-gaps/,
+      );
+    });
+
+    it("rejects when session charters are missing", async () => {
+      const workspace = await createTestWorkspace();
+      workspaces.push(workspace.root);
+      const result = await initializeWorkspace(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const prIntake = savePrIntake(
+        result.databasePath,
+        createSamplePrMetadata(),
+      );
+      const ca = saveChangeAnalysis(result.databasePath, {
+        prIntakeId: prIntake.id,
+        fileAnalyses: [],
+        relatedCodes: [],
+        viewpointSeeds: [],
+        summary: "test",
+        analyzedAt: "2026-04-01T00:00:00Z",
+      } satisfies ChangeAnalysisResult);
+      const tm = saveTestMapping(result.databasePath, {
+        prIntakeId: prIntake.id,
+        changeAnalysisId: ca.id,
+        testAssets: [],
+        testSummaries: [],
+        coverageGapMap: [],
+        missingLayers: [],
+        mappedAt: "2026-04-01T00:00:00Z",
+      } satisfies TestMappingResult);
+      saveRiskAssessment(result.databasePath, {
+        testMappingId: tm.id,
+        riskScores: [],
+        frameworkSelections: [],
+        explorationThemes: [],
+        assessedAt: "2026-04-01T00:00:00Z",
+      } satisfies RiskAssessmentResult);
+
+      await expect(exportArtifacts({ prIntakeId: 1, config })).rejects.toThrow(
+        /Session charters not found.*generate-charters/,
+      );
+    });
   });
 
-  it("scopes findings to the target PR only", async () => {
+  it("scopes findings to the target PR chain only", async () => {
     const workspace = await setupWorkspaceWithFullPipeline();
     const config = await readPluginConfig(
       workspace.configPath,
       workspace.manifestPath,
     );
 
-    // Create a second PR with its own session + finding via separate chain
+    // Build a complete second PR chain with its own findings
     const pr2 = savePrIntake(workspace.databasePath, {
       ...createSamplePrMetadata(),
       prNumber: 99,
       title: "Other PR",
       headSha: "xyz9999",
     });
+    const ca2 = saveChangeAnalysis(workspace.databasePath, {
+      prIntakeId: pr2.id,
+      fileAnalyses: [],
+      relatedCodes: [],
+      viewpointSeeds: [],
+      summary: "second PR",
+      analyzedAt: "2026-04-01T00:00:00Z",
+    } satisfies ChangeAnalysisResult);
+    const tm2 = saveTestMapping(workspace.databasePath, {
+      prIntakeId: pr2.id,
+      changeAnalysisId: ca2.id,
+      testAssets: [],
+      testSummaries: [],
+      coverageGapMap: [],
+      missingLayers: [],
+      mappedAt: "2026-04-01T00:00:00Z",
+    } satisfies TestMappingResult);
+    const ra2 = saveRiskAssessment(workspace.databasePath, {
+      testMappingId: tm2.id,
+      riskScores: [],
+      frameworkSelections: [],
+      explorationThemes: [],
+      assessedAt: "2026-04-01T00:00:00Z",
+    } satisfies RiskAssessmentResult);
+    const sc2 = saveSessionCharters(workspace.databasePath, {
+      riskAssessmentId: ra2.id,
+      charters: [
+        {
+          title: "Other PR charter",
+          goal: "Test other PR",
+          scope: ["src/other.ts"],
+          selectedFrameworks: ["error-guessing"],
+          preconditions: [],
+          observationTargets: [
+            { category: "network", description: "Check other" },
+          ],
+          stopConditions: ["Done"],
+          timeboxMinutes: 10,
+        },
+      ],
+      generatedAt: "2026-04-01T00:00:00Z",
+    } satisfies SessionCharterGenerationResult);
+    const s2 = saveSession(workspace.databasePath, {
+      sessionChartersId: sc2.id,
+      charterIndex: 0,
+      charterTitle: "Other PR charter",
+    });
+    updateSessionStatus(workspace.databasePath, {
+      sessionId: s2.id,
+      status: "in_progress",
+      startedAt: "2026-04-01T11:00:00Z",
+    });
+    const obs2 = saveObservation(workspace.databasePath, {
+      sessionId: s2.id,
+      targetedHeuristic: "boundary",
+      action: "Enter max value",
+      expected: "Accepted",
+      actual: "Accepted",
+      outcome: "pass",
+      note: "",
+      evidencePath: null,
+    });
+    saveFinding(workspace.databasePath, {
+      sessionId: s2.id,
+      observationId: obs2.id,
+      type: "defect",
+      title: "LEAKED_FROM_OTHER_PR",
+      description: "This should not appear in PR 1 export",
+      severity: "low",
+      recommendedTestLayer: null,
+      automationRationale: null,
+    });
 
     const result = await exportArtifacts({ prIntakeId: 1, config });
-    const content = await readFile(result.artifacts.findingsReport, "utf8");
+    const findingsContent = await readFile(
+      result.artifacts.findingsReport,
+      "utf8",
+    );
+    const chartersContent = await readFile(
+      result.artifacts.sessionCharters,
+      "utf8",
+    );
 
-    // Findings from the first PR should be present
-    expect(content).toContain("Crash on invalid credentials");
-    // The second PR has no pipeline chain, so no findings from it
-    // Most importantly: the report should NOT contain data from unrelated PRs
-    expect(content).not.toContain("Other PR");
+    // PR 1 findings present
+    expect(findingsContent).toContain("Crash on invalid credentials");
+    // PR 2 finding NOT present
+    expect(findingsContent).not.toContain("LEAKED_FROM_OTHER_PR");
+    // PR 2 charter NOT present
+    expect(chartersContent).not.toContain("Other PR charter");
   });
 });

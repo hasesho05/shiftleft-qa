@@ -318,11 +318,11 @@ function buildSessionChartersDoc(data: CollectedData): string {
     return lines.join("\n");
   }
 
+  const sessionByIndex = new Map(sessions.map((s) => [s.charterIndex, s]));
+
   for (let i = 0; i < sessionCharters.charters.length; i++) {
     const charter = sessionCharters.charters[i];
-    const session = sessions.find(
-      (s) => s.sessionChartersId === sessionCharters.id && s.charterIndex === i,
-    );
+    const session = sessionByIndex.get(i);
 
     lines.push(`## Charter ${i + 1}: ${escapePipe(charter.title)}`, "");
     lines.push(`**Goal**: ${escapePipe(charter.goal)}`);
@@ -405,8 +405,10 @@ function buildFindingsReport(data: CollectedData): string {
   lines.push("| # | Type | Title | Severity | Session |");
   lines.push("| --- | --- | --- | --- | --- |");
 
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+
   for (const f of findings) {
-    const session = sessions.find((s) => s.id === f.sessionId);
+    const session = sessionById.get(f.sessionId);
     const sessionLabel = session ? escapePipe(session.charterTitle) : "-";
     lines.push(
       `| ${f.id} | ${f.type} | ${escapePipe(f.title)} | ${f.severity} | ${sessionLabel} |`,

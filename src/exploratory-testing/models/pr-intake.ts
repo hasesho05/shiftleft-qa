@@ -1,4 +1,10 @@
-import { nonEmptyString, schema, v } from "../lib/validation";
+import {
+  nonEmptyString,
+  nonNegativeInteger,
+  positiveInteger,
+  schema,
+  v,
+} from "../lib/validation";
 
 import { resolvedScmProviderSchema } from "./config";
 
@@ -10,8 +16,8 @@ export const changedFileSchema = schema(
   v.object({
     path: nonEmptyString(),
     status: changedFileStatusSchema,
-    additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    additions: nonNegativeInteger(),
+    deletions: nonNegativeInteger(),
     previousPath: v.optional(v.nullable(nonEmptyString()), null),
   }),
 );
@@ -29,7 +35,7 @@ export const prMetadataSchema = schema(
   v.object({
     provider: resolvedScmProviderSchema,
     repository: nonEmptyString(),
-    prNumber: v.pipe(v.number(), v.integer(), v.minValue(1)),
+    prNumber: positiveInteger(),
     title: v.string(),
     description: v.string(),
     author: nonEmptyString(),

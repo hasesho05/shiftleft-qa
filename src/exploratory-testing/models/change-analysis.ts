@@ -1,5 +1,6 @@
 import {
   nonEmptyString,
+  nonNegativeInteger,
   positiveInteger,
   schema,
   unitInterval,
@@ -41,8 +42,8 @@ export const fileChangeAnalysisSchema = schema(
     status: schema(
       v.picklist(["added", "modified", "deleted", "renamed", "copied"]),
     ),
-    additions: v.pipe(v.number(), v.integer(), v.minValue(0)),
-    deletions: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    additions: nonNegativeInteger(),
+    deletions: nonNegativeInteger(),
     categories: v.array(categorizedChangeSchema),
   }),
 );

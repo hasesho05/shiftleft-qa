@@ -1,4 +1,10 @@
-import { nonEmptyString, positiveInteger, schema, v } from "../lib/validation";
+import {
+  nonEmptyString,
+  nonNegativeInteger,
+  positiveInteger,
+  schema,
+  v,
+} from "../lib/validation";
 
 export const sessionStatusSchema = schema(
   v.picklist(["planned", "in_progress", "interrupted", "completed"]),
@@ -29,7 +35,7 @@ export type Observation = v.InferOutput<typeof observationSchema>;
 export const sessionSchema = schema(
   v.object({
     sessionChartersId: positiveInteger(),
-    charterIndex: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    charterIndex: nonNegativeInteger(),
     charterTitle: nonEmptyString(),
     status: sessionStatusSchema,
     startedAt: v.nullable(nonEmptyString()),

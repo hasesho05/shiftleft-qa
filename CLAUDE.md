@@ -259,6 +259,31 @@ gap を使わない theme 生成は partial exploration を作れず、`#6` の 
 
 ### 長い repository/tool テストは timeout 前提で設計する
 
+### finding type ごとの必須項目は model と tool の両方で縛る
+
+`finding` は type によって必須項目が変わる。特に `automation-candidate` は
+`recommendedTestLayer` と `automationRationale` が実質必須。
+
+- Zod model で「type に応じた不変条件」を表現する
+- tool 層でも保存前に business rule を明示チェックする
+- CLI でも `automation-candidate` のときは `--test-layer` と `--rationale` を要求する
+
+nullable にしておいて後段レポートで吸収する、という設計は避ける。  
+requirements 上「どの test layer に落とすか提案できること」が求められているので、
+`automation-candidate` なのに layer なし、rationale なしのデータは作ってはいけない。
+
+### report 系は「対象が存在しない」と「対象はあるが件数ゼロ」を区別する
+
+`finding report`, `finding automation-report` のような集計系コマンドは、
+対象 `sessionId` / `riskAssessmentId` / `prIntakeId` などの親レコード存在確認を先に行うこと。
+
+- 親が存在しない場合は明確なエラーを返す
+- 親は存在するが子レコードが 0 件のときだけ空レポートを返す
+
+存在確認なしで `list*()` の結果が空だからといって `0件` 扱いすると、
+オペレーションミスと本当に結果が空のケースを区別できなくなる。  
+このリポジトリでは resumable / auditable な運用が前提なので、集計対象の実在性は必ず検証する。
+
 このリポジトリの Vitest は `bun:sqlite` shim 経由で `sqlite3` CLI を多用するため、repository/tool テストは速くない。  
 数回の workspace 初期化、DB 書き込み、progress file 更新を含むテストは 5 秒を超えることがある。
 

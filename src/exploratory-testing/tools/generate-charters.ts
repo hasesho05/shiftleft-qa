@@ -20,6 +20,7 @@ import type { ResolvedPluginConfig } from "../models/config";
 import {
   DEFAULT_EXPLORATION_BUDGET_MINUTES,
   type DroppedItem,
+  PROTECTED_RISK_SIGNALS,
   type PruningResult,
 } from "../models/pruning";
 import type { ExplorationTheme } from "../models/risk-assessment";
@@ -27,6 +28,7 @@ import type {
   SessionCharter,
   SessionCharterGenerationResult,
 } from "../models/session-charter";
+import type { ExplorationPriority } from "../models/test-mapping";
 import type { CoverageGapEntry } from "../models/test-mapping";
 import { readPluginConfig } from "./config";
 import {
@@ -144,15 +146,32 @@ export async function runGenerateChartersFromAllocation(
   const pruning = pruneManualExplorationItems(pruningInput);
 
   const selectedItemSet = new Set(pruning.selectedItemIds);
-  const selectedItems = manualItems.filter((item) =>
+  const initialSelectedItems = manualItems.filter((item) =>
     selectedItemSet.has(item.id),
   );
+
+  // Post-pruning charter budget validation: the item-level budget is a proxy.
+  // Charter generation fans out (1 item → N themes → N charters). Validate
+  // the actual charter total against the budget and trim if needed.
+  const { items: selectedItems, additionalDropped } = validateCharterBudget(
+    initialSelectedItems,
+    riskAssessment.explorationThemes,
+    coverageGapMap,
+    pruningInput.budgetMinutes,
+  );
+
+  const allDropped = [...pruning.droppedItems, ...additionalDropped];
 
   const filteredThemes = filterThemesByAllocation(
     riskAssessment.explorationThemes,
     selectedItems,
   );
   const charters = generateSessionCharters(filteredThemes, coverageGapMap);
+
+  const charterTotalMinutes = charters.reduce(
+    (sum, c) => sum + c.timeboxMinutes,
+    0,
+  );
 
   const generationResult: SessionCharterGenerationResult = {
     riskAssessmentId: riskAssessment.id,
@@ -165,16 +184,26 @@ export async function runGenerateChartersFromAllocation(
     generationResult,
   );
 
-  const body = buildHandoverBody(persisted, pruning.droppedItems);
+  const updatedPruning: PruningResult = {
+    ...pruning,
+    droppedItems: allDropped,
+    budgetUsedMinutes: charterTotalMinutes,
+  };
+
+  const body = buildHandoverBody(persisted, allDropped);
 
   const handover = await writeStepHandoverFromConfig(config, {
     stepName: "generate-charters",
     status: "completed",
-    summary: buildHandoverSummary(charters, selectedItems.length, pruning),
+    summary: buildHandoverSummary(
+      charters,
+      selectedItems.length,
+      updatedPruning,
+    ),
     body,
   });
 
-  return { persisted, pruning, handover };
+  return { persisted, pruning: updatedPruning, handover };
 }
 
 export function filterThemesByAllocation(
@@ -194,6 +223,100 @@ export function filterThemesByAllocation(
   // exploratory charters for the later manual session phase.
   return themes.filter((theme) =>
     theme.targetFiles.some((file) => manualFilePaths.has(file)),
+  );
+}
+
+const RISK_ORDER: Record<ExplorationPriority, number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+/**
+ * Post-pruning validation: item-level pruning is a proxy. The actual charter
+ * total can exceed the budget due to theme fan-out (1 item → N themes).
+ * Iteratively remove the lowest-priority non-protected item until the
+ * charter total fits the budget.
+ */
+function validateCharterBudget(
+  selectedItems: readonly PersistedAllocationItem[],
+  themes: readonly ExplorationTheme[],
+  coverageGapMap: readonly CoverageGapEntry[],
+  budgetMinutes: number,
+): {
+  items: readonly PersistedAllocationItem[];
+  additionalDropped: readonly DroppedItem[];
+} {
+  let current = [...selectedItems];
+  const additionalDropped: DroppedItem[] = [];
+
+  // Build a sorted list of droppable item IDs (most droppable first)
+  const droppableCandidateIds = selectedItems
+    .filter(
+      (item) => item.riskLevel !== "high" && !hasProtectedSignalOnItem(item),
+    )
+    .sort((a, b) => {
+      const riskDiff = RISK_ORDER[a.riskLevel] - RISK_ORDER[b.riskLevel];
+      if (riskDiff !== 0) return riskDiff;
+      return b.confidence - a.confidence;
+    })
+    .map((item) => item.id);
+
+  for (const candidateId of droppableCandidateIds) {
+    const candidateItem = current.find((item) => item.id === candidateId);
+    if (!candidateItem) {
+      continue;
+    }
+
+    const currentTotal = computeCharterTotal(themes, current, coverageGapMap);
+
+    if (currentTotal <= budgetMinutes) {
+      break;
+    }
+
+    // Never drop below 1 item — zero charters is not actionable
+    if (current.length <= 1) {
+      break;
+    }
+
+    // Try removing this candidate and check if it actually reduces charter total
+    const withoutCandidate = current.filter((item) => item.id !== candidateId);
+    const totalAfter = computeCharterTotal(
+      themes,
+      withoutCandidate,
+      coverageGapMap,
+    );
+
+    if (totalAfter < currentTotal) {
+      // Removal actually reduced charter total — commit the drop
+      additionalDropped.push({
+        title: candidateItem.title,
+        changedFilePaths: [...candidateItem.changedFilePaths],
+        riskLevel: candidateItem.riskLevel,
+        reason: "budget-exceeded",
+        estimatedMinutes: currentTotal - totalAfter,
+      });
+      current = withoutCandidate;
+    }
+    // If removal didn't reduce total, skip — other items cover the same themes
+  }
+
+  return { items: current, additionalDropped };
+}
+
+function computeCharterTotal(
+  themes: readonly ExplorationTheme[],
+  items: readonly PersistedAllocationItem[],
+  coverageGapMap: readonly CoverageGapEntry[],
+): number {
+  const filtered = filterThemesByAllocation(themes, items);
+  const charters = generateSessionCharters(filtered, coverageGapMap);
+  return charters.reduce((sum, c) => sum + c.timeboxMinutes, 0);
+}
+
+function hasProtectedSignalOnItem(item: PersistedAllocationItem): boolean {
+  return item.sourceSignals.riskSignals.some((signal) =>
+    PROTECTED_RISK_SIGNALS.some((p) => signal.includes(p)),
   );
 }
 

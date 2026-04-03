@@ -156,32 +156,48 @@ function applyDuplicateMerging(items: readonly PersistedAllocationItem[]): {
 function groupByOverlappingSignals(
   items: readonly PersistedAllocationItem[],
 ): PersistedAllocationItem[][] {
-  // Greedy grouping: items share a group if they have overlapping riskSignals (transitive via group merge)
+  // Transitive grouping: items share a group if they have overlapping riskSignals.
+  // A bridging item that overlaps multiple groups causes those groups to merge.
   const groups: { items: PersistedAllocationItem[]; signals: Set<string> }[] =
     [];
 
   for (const item of items) {
     const itemSignals = item.sourceSignals.riskSignals;
-    let merged = false;
 
-    if (itemSignals.length > 0) {
-      for (const group of groups) {
-        if (itemSignals.some((s) => group.signals.has(s))) {
-          group.items.push(item);
-          for (const s of itemSignals) {
-            group.signals.add(s);
-          }
-          merged = true;
-          break;
-        }
+    if (itemSignals.length === 0) {
+      groups.push({ items: [item], signals: new Set() });
+      continue;
+    }
+
+    // Find ALL groups this item overlaps with
+    const matchingIndices: number[] = [];
+    for (let i = 0; i < groups.length; i++) {
+      if (itemSignals.some((s) => groups[i].signals.has(s))) {
+        matchingIndices.push(i);
       }
     }
 
-    if (!merged) {
-      groups.push({
-        items: [item],
-        signals: new Set(itemSignals),
-      });
+    if (matchingIndices.length === 0) {
+      groups.push({ items: [item], signals: new Set(itemSignals) });
+    } else {
+      // Merge all matching groups into the first one
+      const target = groups[matchingIndices[0]];
+      target.items.push(item);
+      for (const s of itemSignals) {
+        target.signals.add(s);
+      }
+
+      // Absorb remaining matching groups into target (iterate in reverse to preserve indices)
+      for (let i = matchingIndices.length - 1; i >= 1; i--) {
+        const absorbed = groups[matchingIndices[i]];
+        for (const absorbedItem of absorbed.items) {
+          target.items.push(absorbedItem);
+        }
+        for (const s of absorbed.signals) {
+          target.signals.add(s);
+        }
+        groups.splice(matchingIndices[i], 1);
+      }
     }
   }
 
@@ -265,7 +281,8 @@ function resolveEstimatedMinutes(
   item: PersistedAllocationItem,
   themes: readonly ExplorationTheme[],
 ): number {
-  // Try to find a matching theme by file overlap
+  // Use first matching theme as per-item proxy. The actual charter-level total
+  // is validated post-pruning in generate-charters to account for fan-out.
   const matchingTheme = themes.find((theme) =>
     theme.targetFiles.some((file) => item.changedFilePaths.includes(file)),
   );

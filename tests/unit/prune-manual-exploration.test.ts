@@ -91,6 +91,61 @@ describe("pruneManualExplorationItems", () => {
       expect(result.droppedItems).toHaveLength(1);
       expect(result.droppedItems[0].reason).toBe("duplicate");
     });
+
+    it("transitively merges groups when a bridging item overlaps both", () => {
+      // signals [a], [b], [a,b] should collapse into one group → 2 dropped
+      const items = [
+        makeManualItem({
+          id: 1,
+          changedFilePaths: ["src/payment.ts"],
+          sourceSignals: {
+            categories: [],
+            existingTestLayers: [],
+            gapAspects: ["error-path"],
+            reviewComments: [],
+            riskSignals: ["signal-a"],
+          },
+        }),
+        makeManualItem({
+          id: 2,
+          changedFilePaths: ["src/payment.ts"],
+          sourceSignals: {
+            categories: [],
+            existingTestLayers: [],
+            gapAspects: ["boundary"],
+            reviewComments: [],
+            riskSignals: ["signal-b"],
+          },
+        }),
+        makeManualItem({
+          id: 3,
+          riskLevel: "high",
+          changedFilePaths: ["src/payment.ts"],
+          sourceSignals: {
+            categories: [],
+            existingTestLayers: [],
+            gapAspects: ["error-path"],
+            reviewComments: [],
+            riskSignals: ["signal-a", "signal-b"],
+          },
+        }),
+      ];
+
+      const result = pruneManualExplorationItems({
+        manualItems: items,
+        devBoxItems: [],
+        themes: [],
+        budgetMinutes: 120,
+      });
+
+      // All 3 share a group transitively; highest-risk (id=3) kept, 2 dropped
+      expect(result.selectedItemIds).toHaveLength(1);
+      expect(result.selectedItemIds).toContain(3);
+      expect(result.droppedItems).toHaveLength(2);
+      expect(result.droppedItems.every((d) => d.reason === "duplicate")).toBe(
+        true,
+      );
+    });
   });
 
   describe("P2: risk level priority", () => {
@@ -478,6 +533,41 @@ describe("pruneManualExplorationItems", () => {
       });
 
       expect(result.budgetUsedMinutes).toBe(45);
+    });
+
+    it("uses first matching theme for per-item pricing", () => {
+      const items = [
+        makeManualItem({
+          id: 1,
+          riskLevel: "medium",
+          changedFilePaths: ["src/a.ts"],
+        }),
+      ];
+
+      // Two themes target src/a.ts but first-match pricing uses 15 (not sum)
+      const themes = [
+        makeTheme({
+          title: "Theme1",
+          targetFiles: ["src/a.ts"],
+          estimatedMinutes: 15,
+        }),
+        makeTheme({
+          title: "Theme2",
+          targetFiles: ["src/a.ts"],
+          estimatedMinutes: 25,
+        }),
+      ];
+
+      const result = pruneManualExplorationItems({
+        manualItems: items,
+        devBoxItems: [],
+        themes,
+        budgetMinutes: 120,
+      });
+
+      // Item-level pruning uses first-match (15). Post-pruning charter
+      // validation in generate-charters handles actual fan-out.
+      expect(result.budgetUsedMinutes).toBe(15);
     });
 
     it("falls back to default minutes by risk level when no theme matches", () => {

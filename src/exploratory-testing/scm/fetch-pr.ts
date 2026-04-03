@@ -5,6 +5,7 @@ import type { PrMetadata } from "../models/pr-intake";
 import type { ResolvedScmProvider } from "./detect-provider";
 import { resolveScmProvider } from "./detect-provider";
 import { fetchGithubPr } from "./fetch-github";
+import { fetchGitlabMr } from "./fetch-gitlab";
 
 export type FetchPrInput = {
   readonly prNumber: number;
@@ -40,9 +41,7 @@ function fetchByProvider(
     case "github":
       return fetchGithubPr(input);
     case "gitlab":
-      throw new Error(
-        'provider "gitlab" は未対応です。現在は "github" のみサポートしています。',
-      );
+      return fetchGitlabMr(input);
   }
 }
 

@@ -11,6 +11,7 @@ import {
   findPrIntake,
   saveTestMapping,
 } from "../db/workspace-repository";
+import { escapePipe } from "../lib/markdown";
 import type { ChangeCategory } from "../models/change-analysis";
 import type { ResolvedPluginConfig } from "../models/config";
 import type {
@@ -192,10 +193,6 @@ function buildHandoverBody(mapping: PersistedTestMapping): string {
   lines.push("## Next step", "", "- assess-gaps", "");
 
   return lines.join("\n");
-}
-
-function escapePipe(text: string): string {
-  return text.replace(/\|/g, "\\|");
 }
 
 function inferCoveredAspects(

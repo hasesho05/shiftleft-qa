@@ -133,8 +133,52 @@ bun run check
 - `.exploratory-testing/progress/progress-summary.md`
 - `.exploratory-testing/progress/01-setup.md`
 
-## Next implementation steps
+## End-to-end workflow
 
-- `#2` PR / MR intake CLI
-- `#10` Diff and context analysis
-- `#9` Test mapping and coverage gap map
+The plugin follows a 9-step linear workflow. Each step produces structured output that feeds the next.
+
+```bash
+# 1. Initialize workspace
+bun run dev setup
+
+# 2. Ingest PR metadata and changed files
+bun run dev pr-intake --pr <number>
+
+# 3. Analyze diff and context
+bun run dev discover-context --pr <number> --provider github --repository owner/repo
+
+# 4. Map tests and build coverage gap map
+bun run dev map-tests --pr <number> --provider github --repository owner/repo
+
+# 5. Score risk, select frameworks, generate exploration themes
+bun run dev assess-gaps --pr <number> --provider github --repository owner/repo
+
+# 6. Generate session charters
+bun run dev generate-charters --pr <number> --provider github --repository owner/repo
+
+# 7. Run exploratory sessions
+bun run dev session start --session-charters-id <id> --charter-index 0
+bun run dev session observe --session <id> --heuristic "..." --action "..." --expected "..." --actual "..." --outcome pass
+bun run dev session complete --session <id>
+
+# 8. Triage findings
+bun run dev finding add --session <id> --observation <id> --type defect --title "..." --description "..." --severity high
+bun run dev finding handover --session <id>
+
+# 9. Export final artifacts
+bun run dev export-artifacts --pr-intake-id <id>
+```
+
+All state is stored in the local SQLite database and progress files. Sessions can be interrupted and resumed at any point.
+
+### Output artifacts
+
+After step 9, the `output/` directory contains:
+
+| File | Description |
+|---|---|
+| `exploration-brief.md` | PR summary, change categories, viewpoint seeds, high-risk areas |
+| `coverage-gap-map.md` | Coverage gaps, missing test layers, existing test assets |
+| `session-charters.md` | Executable exploration plans with scope and frameworks |
+| `findings-report.md` | All findings organized by type and severity |
+| `automation-candidate-report.md` | Automation candidates grouped by recommended test layer |

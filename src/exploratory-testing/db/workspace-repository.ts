@@ -531,6 +531,23 @@ export function findPrIntake(
   }
 }
 
+export function findPrIntakeById(
+  databasePath: string,
+  id: number,
+): PersistedPrIntake | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM pr_intakes WHERE id = ?1")
+      .get<PrIntakeRow>(id);
+
+    return row ? mapPrIntakeRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
 export function listPrIntakes(
   databasePath: string,
 ): readonly PersistedPrIntake[] {

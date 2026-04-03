@@ -8,6 +8,7 @@ import {
   findTestMapping,
   saveSessionCharters,
 } from "../db/workspace-repository";
+import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
 import type {
   SessionCharter,
@@ -204,8 +205,4 @@ function buildHandoverBody(charters: PersistedSessionCharters): string {
   lines.push("## Next step", "", "- run-session", "");
 
   return lines.join("\n");
-}
-
-function escapePipe(text: string): string {
-  return text.replace(/\|/g, "\\|");
 }

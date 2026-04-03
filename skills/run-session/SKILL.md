@@ -1,25 +1,32 @@
 ---
 name: run-session
-description: Record exploratory session observations, evidence, and intermediate progress.
+description: exploratory session の観察、証跡、中間 progress を記録する。
 ---
 
-# Run Session
+# セッション実行
 
-## Purpose
+## 目的
 
-Capture the actual exploratory work in structured logs that can be resumed across sessions.
+探索観察を、再開可能な構造化ログとして保存する。
 
-## Current status
+## 前提条件
 
-This skill is scaffolded in `#8`. Concrete session execution behavior will be implemented in `#4`.
+- `generate-charters` が完了していること。
+- 1 つの charter index を選び、その charter に集中して session を進めること。
 
-## Intended outputs
+## 実行手順
 
-- session log
-- observation records
-- evidence references
-- resumable progress entry
+1. `bun run dev session start --session-charters-id <id> --charter-index 0` で session を開始する。
+2. 各 observation は `bun run dev session observe --session <id> --heuristic "..." --action "..." --expected "..." --actual "..." --outcome pass|fail|unclear|suspicious` で記録する。
+3. 保存したいファイルやスクリーンショットがある場合は `--evidence-path` を付ける。
+4. 途中で止める必要があれば `bun run dev session interrupt --session <id> --reason "..."` を使う。
+5. 終了時は `bun run dev session complete --session <id>` を実行する。
 
-## Intended CLI boundary
+## 再開方法
 
-- `exploratory-testing run-session`
+- 同じ charter に対して再度 `session start` を呼び、session を再開する。
+- 直前状態を確認したい場合は `.exploratory-testing/progress/07-run-session.md` を読む。
+
+## 次の Step
+
+- `triage-findings`

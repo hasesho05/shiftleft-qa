@@ -1,24 +1,32 @@
 ---
 name: triage-findings
-description: Classify exploratory findings and connect them to the right follow-up quality asset.
+description: exploratory findings を分類し、適切な次の品質資産につなげる。
 ---
 
-# Triage Findings
+# Findings Triage
 
-## Purpose
+## 目的
 
-Ensure discoveries become actionable defects, spec gaps, or automation candidates instead of ad hoc notes.
+観察結果を defect、spec gap、automation candidate に整理する。
 
-## Current status
+## 前提条件
 
-This skill is scaffolded in `#8`. Concrete triage behavior will be implemented in `#5`.
+- `run-session` で少なくとも 1 つの completed または interrupted session が存在すること。
+- triage 対象の observations が database に保存されていること。
 
-## Intended outputs
+## 実行手順
 
-- findings report
-- automation candidate list
-- recommended test layer
+1. `bun run dev finding add --session <id> --observation <id> --type defect|spec-gap|automation-candidate --title "..." --description "..." --severity low|medium|high|critical` で finding を追加する。
+2. automation candidate の場合は `--test-layer unit|integration|e2e|visual|api` と `--rationale "..."` を付ける。
+3. `bun run dev finding report --session <id>` で findings report を生成する。
+4. `bun run dev finding automation-report --session <id>` で automation candidate report を生成する。
+5. `bun run dev finding handover --session <id>` で triage handover を書き出す。
 
-## Intended CLI boundary
+## 再開方法
 
-- `exploratory-testing triage-findings`
+- 新しい finding を追加した後は `finding report` または `finding automation-report` を再実行する。
+- 後続 export で追跡できるよう、各 finding と observation ID の対応を維持する。
+
+## 次の Step
+
+- `export-artifacts`

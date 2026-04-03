@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 import { cac } from "cac";
 
+import { normalizeExecaError } from "../lib/execa-error";
 import {
   findingSeveritySchema,
   findingTypeSchema,
@@ -12,7 +14,7 @@ import { observationOutcomeSchema } from "../models/session";
 import { runAssessGaps } from "../tools/assess-gaps";
 import { readPluginConfig } from "../tools/config";
 import { runDiscoverContext } from "../tools/discover-context";
-import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
+import { createEnvironmentReport } from "../tools/doctor";
 import { exportArtifacts } from "../tools/export-artifacts";
 import { runGenerateCharters } from "../tools/generate-charters";
 import { readPluginManifest } from "../tools/manifest";
@@ -100,415 +102,471 @@ type HandoverCommandOptions = WorkspaceCommandOptions & {
   readonly bodyFile?: string;
 };
 
+export type JsonSuccessEnvelope<T> = {
+  readonly status: "ok";
+  readonly data: T;
+};
+
+export type JsonErrorEnvelope = {
+  readonly status: "error";
+  readonly message: string;
+};
+
+export type JsonEnvelope<T> = JsonSuccessEnvelope<T> | JsonErrorEnvelope;
+
+export function formatSuccessEnvelope<T>(data: T): JsonSuccessEnvelope<T> {
+  return {
+    status: "ok",
+    data,
+  };
+}
+
+export function formatErrorEnvelope(error: unknown): JsonErrorEnvelope {
+  return {
+    status: "error",
+    message: normalizeCliErrorMessage(error),
+  };
+}
+
+export function normalizeCliErrorMessage(error: unknown): string {
+  return normalizeExecaError(error, undefined, "不明なエラーです");
+}
+
+function emitJsonEnvelope<T>(envelope: JsonEnvelope<T>): void {
+  console.log(JSON.stringify(envelope, null, 2));
+}
+
+function createEnvelopeAction<TArgs extends readonly unknown[], TResult>(
+  handler: (...args: TArgs) => Promise<TResult> | TResult,
+): (...args: TArgs) => Promise<void> {
+  return async (...args: TArgs): Promise<void> => {
+    try {
+      emitJsonEnvelope(formatSuccessEnvelope(await handler(...args)));
+    } catch (error) {
+      process.exitCode = 1;
+      emitJsonEnvelope(formatErrorEnvelope(error));
+    }
+  };
+}
+
 const cli = cac("exploratory-testing");
 
-cli.command("doctor", "Check the local development environment").action(() => {
-  const report = createEnvironmentReport();
-
-  if (report.runtime.bunVersion) {
-    console.log(`bun ${report.runtime.bunVersion}`);
-  }
-  if (report.runtime.nodeVersion) {
-    console.log(`node ${report.runtime.nodeVersion}`);
-  }
-
-  let hasMissingRequiredTool = false;
-
-  for (const tool of report.tools) {
-    const status = getToolStatus(tool);
-    const requirement = tool.required ? "required" : "optional";
-    const suffix = tool.version ? ` (${tool.version})` : "";
-    console.log(`${status} ${tool.name} [${requirement}]${suffix}`);
-
-    if (tool.required && status === "missing") {
-      hasMissingRequiredTool = true;
-    }
-  }
-
-  if (hasMissingRequiredTool) {
-    process.exitCode = 1;
-  }
-});
-
-cli
-  .command("manifest", "Read and validate the plugin manifest")
-  .option("--path <manifestPath>", "Path to plugin.json")
-  .action(async (options) => {
-    const manifest = await readPluginManifest(options.path);
-    console.log(JSON.stringify(manifest, null, 2));
-  });
-
-cli
-  .command("setup", "Initialize config, database, and progress artifacts")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .action(async (options: WorkspaceCommandOptions) => {
-    const result = await initializeWorkspace(options.config, options.manifest);
-
-    emitJson({
-      createdConfig: result.createdConfig,
-      configPath: result.config.configPath,
-      databasePath: result.databasePath,
-      progressDirectory: result.progressDirectory,
-      progressSummaryPath: result.progressSummaryPath,
-      artifactsDirectory: result.artifactsDirectory,
-      setupProgressPath: result.setupProgressPath,
-      currentStep: result.currentStep,
-      journalMode: result.journalMode,
-      foreignKeys: result.foreignKeys,
-    });
-  });
-
-cli
-  .command("db init", "Initialize the SQLite workspace database")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .action(async (options: WorkspaceCommandOptions) => {
-    const result = await initializeDatabaseFromConfig(
-      options.config,
-      options.manifest,
+cli.command("doctor", "ローカル開発環境を確認する").action(
+  createEnvelopeAction(() => {
+    const report = createEnvironmentReport();
+    const hasMissingRequiredTool = report.tools.some(
+      (tool) => tool.required && !tool.detected,
     );
 
-    emitJson({
-      createdConfig: result.createdConfig,
-      configPath: result.config.configPath,
-      databasePath: result.databasePath,
-      journalMode: result.journalMode,
-      foreignKeys: result.foreignKeys,
-    });
-  });
+    return {
+      ...report,
+      hasMissingRequiredTool,
+    };
+  }),
+);
 
 cli
-  .command("pr-intake", "Ingest PR/MR metadata and changed files")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--pr <prNumber>", "PR or MR number")
-  .action(async (options: PrIntakeCommandOptions) => {
-    if (!options.pr) {
-      throw new Error("The --pr option is required.");
-    }
+  .command("manifest", "plugin manifest を読み込み検証する")
+  .option("--path <manifestPath>", "plugin.json のパス")
+  .action(
+    createEnvelopeAction(async (options) => {
+      return readPluginManifest(options.path);
+    }),
+  );
 
-    const result = await runPrIntake({
-      prNumber: options.pr,
-      configPath: options.config,
-      manifestPath: options.manifest,
-    });
+cli
+  .command("setup", "config、DB、progress を初期化する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .action(
+    createEnvelopeAction(async (options: WorkspaceCommandOptions) => {
+      const result = await initializeWorkspace(options.config, options.manifest);
 
-    emitJson({
-      provider: result.persisted.provider,
-      repository: result.persisted.repository,
-      prNumber: result.persisted.prNumber,
-      title: result.persisted.title,
-      author: result.persisted.author,
-      headSha: result.persisted.headSha,
-      changedFiles: result.persisted.changedFiles.length,
-      reviewComments: result.persisted.reviewComments.length,
-      handoverPath: result.handover.filePath,
-      status: result.handover.snapshot.status,
-    });
-  });
+      return {
+        createdConfig: result.createdConfig,
+        configPath: result.config.configPath,
+        databasePath: result.databasePath,
+        progressDirectory: result.progressDirectory,
+        progressSummaryPath: result.progressSummaryPath,
+        artifactsDirectory: result.artifactsDirectory,
+        setupProgressPath: result.setupProgressPath,
+        currentStep: result.currentStep,
+        journalMode: result.journalMode,
+        foreignKeys: result.foreignKeys,
+      };
+    }),
+  );
+
+cli
+  .command("db init", "SQLite ワークスペース DB を初期化する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .action(
+    createEnvelopeAction(async (options: WorkspaceCommandOptions) => {
+      const result = await initializeDatabaseFromConfig(
+        options.config,
+        options.manifest,
+      );
+
+      return {
+        createdConfig: result.createdConfig,
+        configPath: result.config.configPath,
+        databasePath: result.databasePath,
+        journalMode: result.journalMode,
+        foreignKeys: result.foreignKeys,
+      };
+    }),
+  );
+
+cli
+  .command("pr-intake", "PR/MR のメタデータと変更ファイルを取り込む")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr <prNumber>", "PR または MR 番号")
+  .action(
+    createEnvelopeAction(async (options: PrIntakeCommandOptions) => {
+      if (!options.pr) {
+        throw new Error("--pr オプションは必須です。");
+      }
+
+      const result = await runPrIntake({
+        prNumber: options.pr,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return {
+        provider: result.persisted.provider,
+        repository: result.persisted.repository,
+        prNumber: result.persisted.prNumber,
+        title: result.persisted.title,
+        author: result.persisted.author,
+        headSha: result.persisted.headSha,
+        changedFiles: result.persisted.changedFiles.length,
+        reviewComments: result.persisted.reviewComments.length,
+        handoverPath: result.handover.filePath,
+        status: result.handover.snapshot.status,
+      };
+    }),
+  );
 
 cli
   .command(
     "discover-context",
-    "Analyze diff and context from an ingested PR/MR",
+    "取り込み済みの PR/MR から diff と文脈を解析する",
   )
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--pr <prNumber>", "PR or MR number")
-  .option("--provider <provider>", "SCM provider (github or gitlab)")
-  .option("--repository <repository>", "Repository in owner/repo format")
-  .action(async (options: PrPipelineCommandOptions) => {
-    if (!options.pr) {
-      throw new Error("The --pr option is required.");
-    }
-    if (!options.provider) {
-      throw new Error("The --provider option is required.");
-    }
-    if (!options.repository) {
-      throw new Error("The --repository option is required.");
-    }
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr <prNumber>", "PR または MR 番号")
+  .option("--provider <provider>", "SCM プロバイダ (github または gitlab)")
+  .option("--repository <repository>", "リポジトリ名 (owner/repo 形式)")
+  .action(
+    createEnvelopeAction(async (options: PrPipelineCommandOptions) => {
+      if (!options.pr) {
+        throw new Error("--pr オプションは必須です。");
+      }
+      if (!options.provider) {
+        throw new Error("--provider オプションは必須です。");
+      }
+      if (!options.repository) {
+        throw new Error("--repository オプションは必須です。");
+      }
 
-    const result = await runDiscoverContext({
-      prNumber: options.pr,
-      provider: options.provider,
-      repository: options.repository,
-      configPath: options.config,
-      manifestPath: options.manifest,
-    });
+      const result = await runDiscoverContext({
+        prNumber: options.pr,
+        provider: options.provider,
+        repository: options.repository,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
 
-    emitJson({
-      prIntakeId: result.persisted.prIntakeId,
-      filesAnalyzed: result.persisted.fileAnalyses.length,
-      categoriesFound: [
-        ...new Set(
-          result.persisted.fileAnalyses.flatMap((f) =>
-            f.categories.map((c) => c.category),
+      return {
+        prIntakeId: result.persisted.prIntakeId,
+        filesAnalyzed: result.persisted.fileAnalyses.length,
+        categoriesFound: [
+          ...new Set(
+            result.persisted.fileAnalyses.flatMap((f) =>
+              f.categories.map((c) => c.category),
+            ),
           ),
-        ),
-      ],
-      relatedCodes: result.persisted.relatedCodes.length,
-      viewpointSeeds: result.persisted.viewpointSeeds.filter(
-        (v) => v.seeds.length > 0,
-      ).length,
-      summary: result.persisted.summary,
-      handoverPath: result.handover.filePath,
-      status: result.handover.snapshot.status,
-    });
-  });
+        ],
+        relatedCodes: result.persisted.relatedCodes.length,
+        viewpointSeeds: result.persisted.viewpointSeeds.filter(
+          (v) => v.seeds.length > 0,
+        ).length,
+        summary: result.persisted.summary,
+        handoverPath: result.handover.filePath,
+        status: result.handover.snapshot.status,
+      };
+    }),
+  );
 
 cli
-  .command("map-tests", "Map related test files and build coverage gap map")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--pr <prNumber>", "PR or MR number")
-  .option("--provider <provider>", "SCM provider (github or gitlab)")
-  .option("--repository <repository>", "Repository in owner/repo format")
-  .action(async (options: PrPipelineCommandOptions) => {
-    if (!options.pr) {
-      throw new Error("The --pr option is required.");
-    }
-    if (!options.provider) {
-      throw new Error("The --provider option is required.");
-    }
-    if (!options.repository) {
-      throw new Error("The --repository option is required.");
-    }
+  .command("map-tests", "関連テストを対応付けて coverage gap map を作る")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr <prNumber>", "PR または MR 番号")
+  .option("--provider <provider>", "SCM プロバイダ (github または gitlab)")
+  .option("--repository <repository>", "リポジトリ名 (owner/repo 形式)")
+  .action(
+    createEnvelopeAction(async (options: PrPipelineCommandOptions) => {
+      if (!options.pr) {
+        throw new Error("--pr オプションは必須です。");
+      }
+      if (!options.provider) {
+        throw new Error("--provider オプションは必須です。");
+      }
+      if (!options.repository) {
+        throw new Error("--repository オプションは必須です。");
+      }
 
-    const result = await runMapTests({
-      prNumber: options.pr,
-      provider: options.provider,
-      repository: options.repository,
-      configPath: options.config,
-      manifestPath: options.manifest,
-    });
+      const result = await runMapTests({
+        prNumber: options.pr,
+        provider: options.provider,
+        repository: options.repository,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
 
-    emitJson({
-      prIntakeId: result.persisted.prIntakeId,
-      changeAnalysisId: result.persisted.changeAnalysisId,
-      testAssets: result.persisted.testAssets.length,
-      testSummaries: result.persisted.testSummaries.length,
-      coverageGapEntries: result.persisted.coverageGapMap.length,
-      missingLayers: result.persisted.missingLayers,
-      handoverPath: result.handover.filePath,
-      status: result.handover.snapshot.status,
-    });
-  });
+      return {
+        prIntakeId: result.persisted.prIntakeId,
+        changeAnalysisId: result.persisted.changeAnalysisId,
+        testAssets: result.persisted.testAssets.length,
+        testSummaries: result.persisted.testSummaries.length,
+        coverageGapEntries: result.persisted.coverageGapMap.length,
+        missingLayers: result.persisted.missingLayers,
+        handoverPath: result.handover.filePath,
+        status: result.handover.snapshot.status,
+      };
+    }),
+  );
 
 cli
   .command(
     "assess-gaps",
-    "Score risk, select frameworks, and generate exploration themes",
+    "リスク評価、フレームワーク選定、探索テーマ生成を行う",
   )
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--pr <prNumber>", "PR or MR number")
-  .option("--provider <provider>", "SCM provider (github or gitlab)")
-  .option("--repository <repository>", "Repository in owner/repo format")
-  .action(async (options: PrPipelineCommandOptions) => {
-    if (!options.pr) {
-      throw new Error("The --pr option is required.");
-    }
-    if (!options.provider) {
-      throw new Error("The --provider option is required.");
-    }
-    if (!options.repository) {
-      throw new Error("The --repository option is required.");
-    }
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr <prNumber>", "PR または MR 番号")
+  .option("--provider <provider>", "SCM プロバイダ (github または gitlab)")
+  .option("--repository <repository>", "リポジトリ名 (owner/repo 形式)")
+  .action(
+    createEnvelopeAction(async (options: PrPipelineCommandOptions) => {
+      if (!options.pr) {
+        throw new Error("--pr オプションは必須です。");
+      }
+      if (!options.provider) {
+        throw new Error("--provider オプションは必須です。");
+      }
+      if (!options.repository) {
+        throw new Error("--repository オプションは必須です。");
+      }
 
-    const result = await runAssessGaps({
-      prNumber: options.pr,
-      provider: options.provider,
-      repository: options.repository,
-      configPath: options.config,
-      manifestPath: options.manifest,
-    });
+      const result = await runAssessGaps({
+        prNumber: options.pr,
+        provider: options.provider,
+        repository: options.repository,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
 
-    emitJson({
-      testMappingId: result.persisted.testMappingId,
-      riskScores: result.persisted.riskScores.length,
-      frameworkSelections: result.persisted.frameworkSelections.length,
-      explorationThemes: result.persisted.explorationThemes.length,
-      handoverPath: result.handover.filePath,
-      status: result.handover.snapshot.status,
-    });
-  });
+      return {
+        testMappingId: result.persisted.testMappingId,
+        riskScores: result.persisted.riskScores.length,
+        frameworkSelections: result.persisted.frameworkSelections.length,
+        explorationThemes: result.persisted.explorationThemes.length,
+        handoverPath: result.handover.filePath,
+        status: result.handover.snapshot.status,
+      };
+    }),
+  );
 
 cli
   .command(
     "generate-charters",
-    "Generate executable session charters from exploration themes",
+    "探索テーマから実行可能な session charter を生成する",
   )
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--pr <prNumber>", "PR or MR number")
-  .option("--provider <provider>", "SCM provider (github or gitlab)")
-  .option("--repository <repository>", "Repository in owner/repo format")
-  .action(async (options: PrPipelineCommandOptions) => {
-    if (!options.pr) {
-      throw new Error("The --pr option is required.");
-    }
-    if (!options.provider) {
-      throw new Error("The --provider option is required.");
-    }
-    if (!options.repository) {
-      throw new Error("The --repository option is required.");
-    }
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr <prNumber>", "PR または MR 番号")
+  .option("--provider <provider>", "SCM プロバイダ (github または gitlab)")
+  .option("--repository <repository>", "リポジトリ名 (owner/repo 形式)")
+  .action(
+    createEnvelopeAction(async (options: PrPipelineCommandOptions) => {
+      if (!options.pr) {
+        throw new Error("--pr オプションは必須です。");
+      }
+      if (!options.provider) {
+        throw new Error("--provider オプションは必須です。");
+      }
+      if (!options.repository) {
+        throw new Error("--repository オプションは必須です。");
+      }
 
-    const result = await runGenerateCharters({
-      prNumber: options.pr,
-      provider: options.provider,
-      repository: options.repository,
-      configPath: options.config,
-      manifestPath: options.manifest,
-    });
+      const result = await runGenerateCharters({
+        prNumber: options.pr,
+        provider: options.provider,
+        repository: options.repository,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
 
-    emitJson({
-      riskAssessmentId: result.persisted.riskAssessmentId,
-      chartersGenerated: result.persisted.charters.length,
-      handoverPath: result.handover.filePath,
-      status: result.handover.snapshot.status,
-    });
-  });
+      return {
+        riskAssessmentId: result.persisted.riskAssessmentId,
+        chartersGenerated: result.persisted.charters.length,
+        handoverPath: result.handover.filePath,
+        status: result.handover.snapshot.status,
+      };
+    }),
+  );
 
 cli
-  .command("session start", "Start an exploratory session from a charter")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .command("session start", "charter から探索セッションを開始する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
   .option(
     "--session-charters-id <sessionChartersId>",
-    "Session charters record ID",
+    "session charters レコード ID",
   )
-  .option("--charter-index <charterIndex>", "Charter index (0-based)")
-  .action(async (options: SessionStartCommandOptions) => {
-    if (options.sessionChartersId === undefined) {
-      throw new Error("The --session-charters-id option is required.");
-    }
-    if (options.charterIndex === undefined) {
-      throw new Error("The --charter-index option is required.");
-    }
+  .option("--charter-index <charterIndex>", "charter の index (0 始まり)")
+  .action(
+    createEnvelopeAction(async (options: SessionStartCommandOptions) => {
+      if (options.sessionChartersId === undefined) {
+        throw new Error("--session-charters-id オプションは必須です。");
+      }
+      if (options.charterIndex === undefined) {
+        throw new Error("--charter-index オプションは必須です。");
+      }
 
-    const config = await readPluginConfig(options.config, options.manifest);
+      const config = await readPluginConfig(options.config, options.manifest);
 
-    const result = await startSession({
-      sessionChartersId: options.sessionChartersId,
-      charterIndex: options.charterIndex,
-      config,
-    });
+      const result = await startSession({
+        sessionChartersId: options.sessionChartersId,
+        charterIndex: options.charterIndex,
+        config,
+      });
 
-    emitJson({
-      sessionId: result.session.id,
-      charterTitle: result.session.charterTitle,
-      status: result.session.status,
-      startedAt: result.session.startedAt,
-    });
-  });
+      return {
+        sessionId: result.session.id,
+        charterTitle: result.session.charterTitle,
+        status: result.session.status,
+        startedAt: result.session.startedAt,
+      };
+    }),
+  );
 
 cli
-  .command("session observe", "Add an observation to a running session")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--session <sessionId>", "Session ID")
-  .option("--heuristic <heuristic>", "Targeted heuristic")
-  .option("--action <action>", "Action performed")
-  .option("--expected <expected>", "Expected result")
-  .option("--actual <actual>", "Actual result")
+  .command("session observe", "実行中セッションに観察結果を追加する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--session <sessionId>", "セッション ID")
+  .option("--heuristic <heuristic>", "対象ヒューリスティック")
+  .option("--action <action>", "実施した操作")
+  .option("--expected <expected>", "期待結果")
+  .option("--actual <actual>", "実際の結果")
   .option("--outcome <outcome>", "pass | fail | unclear | suspicious")
-  .option("--note <note>", "Optional note")
-  .option("--evidence-path <evidencePath>", "Path to evidence file")
-  .action(async (options: SessionObserveCommandOptions) => {
-    if (!options.session) {
-      throw new Error("The --session option is required.");
-    }
-    if (
-      !options.heuristic ||
-      !options.action ||
-      !options.expected ||
-      !options.actual ||
-      !options.outcome
-    ) {
-      throw new Error(
-        "The --heuristic, --action, --expected, --actual, and --outcome options are required.",
-      );
-    }
+  .option("--note <note>", "任意メモ")
+  .option("--evidence-path <evidencePath>", "証跡ファイルのパス")
+  .action(
+    createEnvelopeAction(async (options: SessionObserveCommandOptions) => {
+      if (!options.session) {
+        throw new Error("--session オプションは必須です。");
+      }
+      if (
+        !options.heuristic ||
+        !options.action ||
+        !options.expected ||
+        !options.actual ||
+        !options.outcome
+      ) {
+        throw new Error(
+          "--heuristic、--action、--expected、--actual、--outcome は必須です。",
+        );
+      }
 
-    const config = await readPluginConfig(options.config, options.manifest);
-    const outcome = observationOutcomeSchema.parse(options.outcome);
+      const config = await readPluginConfig(options.config, options.manifest);
+      const outcome = observationOutcomeSchema.parse(options.outcome);
 
-    const result = await addSessionObservation({
-      sessionId: options.session,
-      targetedHeuristic: options.heuristic,
-      action: options.action,
-      expected: options.expected,
-      actual: options.actual,
-      outcome,
-      note: options.note ?? "",
-      evidencePath: options.evidencePath ?? null,
-      config,
-    });
+      const result = await addSessionObservation({
+        sessionId: options.session,
+        targetedHeuristic: options.heuristic,
+        action: options.action,
+        expected: options.expected,
+        actual: options.actual,
+        outcome,
+        note: options.note ?? "",
+        evidencePath: options.evidencePath ?? null,
+        config,
+      });
 
-    emitJson({
-      observationId: result.observation.id,
-      sessionId: result.observation.sessionId,
-      observationOrder: result.observation.observationOrder,
-      outcome: result.observation.outcome,
-    });
-  });
-
-cli
-  .command("session interrupt", "Interrupt a running session")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--session <sessionId>", "Session ID")
-  .option("--reason <reason>", "Reason for interruption")
-  .action(async (options: SessionTransitionCommandOptions) => {
-    if (!options.session) {
-      throw new Error("The --session option is required.");
-    }
-    if (!options.reason) {
-      throw new Error("The --reason option is required.");
-    }
-
-    const config = await readPluginConfig(options.config, options.manifest);
-
-    const result = await interruptSession({
-      sessionId: options.session,
-      reason: options.reason,
-      config,
-    });
-
-    emitJson({
-      sessionId: result.session.id,
-      status: result.session.status,
-      interruptReason: result.session.interruptReason,
-      handoverPath: result.handover.filePath,
-    });
-  });
+      return {
+        observationId: result.observation.id,
+        sessionId: result.observation.sessionId,
+        observationOrder: result.observation.observationOrder,
+        outcome: result.observation.outcome,
+      };
+    }),
+  );
 
 cli
-  .command("session complete", "Complete a running session")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--session <sessionId>", "Session ID")
-  .action(async (options: SessionTransitionCommandOptions) => {
-    if (!options.session) {
-      throw new Error("The --session option is required.");
-    }
+  .command("session interrupt", "実行中セッションを中断する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--session <sessionId>", "セッション ID")
+  .option("--reason <reason>", "中断理由")
+  .action(
+    createEnvelopeAction(async (options: SessionTransitionCommandOptions) => {
+      if (!options.session) {
+        throw new Error("--session オプションは必須です。");
+      }
+      if (!options.reason) {
+        throw new Error("--reason オプションは必須です。");
+      }
 
-    const config = await readPluginConfig(options.config, options.manifest);
+      const config = await readPluginConfig(options.config, options.manifest);
 
-    const result = await completeSession({
-      sessionId: options.session,
-      config,
-    });
+      const result = await interruptSession({
+        sessionId: options.session,
+        reason: options.reason,
+        config,
+      });
 
-    emitJson({
-      sessionId: result.session.id,
-      status: result.session.status,
-      completedAt: result.session.completedAt,
-      handoverPath: result.handover.filePath,
-    });
-  });
+      return {
+        sessionId: result.session.id,
+        status: result.session.status,
+        interruptReason: result.session.interruptReason,
+        handoverPath: result.handover.filePath,
+      };
+    }),
+  );
+
+cli
+  .command("session complete", "実行中セッションを完了する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--session <sessionId>", "セッション ID")
+  .action(
+    createEnvelopeAction(async (options: SessionTransitionCommandOptions) => {
+      if (!options.session) {
+        throw new Error("--session オプションは必須です。");
+      }
+
+      const config = await readPluginConfig(options.config, options.manifest);
+
+      const result = await completeSession({
+        sessionId: options.session,
+        config,
+      });
+
+      return {
+        sessionId: result.session.id,
+        status: result.session.status,
+        completedAt: result.session.completedAt,
+        handoverPath: result.handover.filePath,
+      };
+    }),
+  );
 
 // ---------------------------------------------------------------------------
 // finding commands
@@ -517,257 +575,279 @@ cli
 cli
   .command(
     "finding add",
-    "Add a finding from an observation (defect, spec-gap, automation-candidate)",
+    "観察結果から finding を追加する (defect, spec-gap, automation-candidate)",
   )
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--session <sessionId>", "Session ID")
-  .option("--observation <observationId>", "Observation ID")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--session <sessionId>", "セッション ID")
+  .option("--observation <observationId>", "観察結果 ID")
   .option("--type <findingType>", "defect | spec-gap | automation-candidate")
-  .option("--title <title>", "Finding title")
-  .option("--description <description>", "Finding description")
+  .option("--title <title>", "finding タイトル")
+  .option("--description <description>", "finding 説明")
   .option("--severity <severity>", "low | medium | high | critical")
   .option("--test-layer <testLayer>", "unit | integration | e2e | visual | api")
-  .option("--rationale <rationale>", "Automation rationale")
-  .action(async (options: FindingAddCommandOptions) => {
-    if (
-      !options.session ||
-      !options.observation ||
-      !options.type ||
-      !options.title ||
-      !options.description ||
-      !options.severity
-    ) {
-      throw new Error(
-        "The --session, --observation, --type, --title, --description, and --severity options are required.",
-      );
-    }
-
-    const parsedType = findingTypeSchema.parse(options.type);
-
-    if (parsedType === "automation-candidate") {
-      if (!options.testLayer) {
+  .option("--rationale <rationale>", "自動化候補の理由")
+  .action(
+    createEnvelopeAction(async (options: FindingAddCommandOptions) => {
+      if (
+        !options.session ||
+        !options.observation ||
+        !options.type ||
+        !options.title ||
+        !options.description ||
+        !options.severity
+      ) {
         throw new Error(
-          "The --test-layer option is required for automation-candidate findings.",
+          "--session、--observation、--type、--title、--description、--severity は必須です。",
         );
       }
-      if (!options.rationale) {
-        throw new Error(
-          "The --rationale option is required for automation-candidate findings.",
-        );
+
+      const parsedType = findingTypeSchema.parse(options.type);
+
+      if (parsedType === "automation-candidate") {
+        if (!options.testLayer) {
+          throw new Error(
+            "automation-candidate では --test-layer が必須です。",
+          );
+        }
+        if (!options.rationale) {
+          throw new Error(
+            "automation-candidate では --rationale が必須です。",
+          );
+        }
       }
-    }
 
-    const config = await readPluginConfig(options.config, options.manifest);
+      const config = await readPluginConfig(options.config, options.manifest);
 
-    const result = await addFinding({
-      sessionId: options.session,
-      observationId: options.observation,
-      type: parsedType,
-      title: options.title,
-      description: options.description,
-      severity: findingSeveritySchema.parse(options.severity),
-      recommendedTestLayer: options.testLayer
-        ? recommendedTestLayerSchema.parse(options.testLayer)
-        : null,
-      automationRationale: options.rationale ?? null,
-      config,
-    });
+      const result = await addFinding({
+        sessionId: options.session,
+        observationId: options.observation,
+        type: parsedType,
+        title: options.title,
+        description: options.description,
+        severity: findingSeveritySchema.parse(options.severity),
+        recommendedTestLayer: options.testLayer
+          ? recommendedTestLayerSchema.parse(options.testLayer)
+          : null,
+        automationRationale: options.rationale ?? null,
+        config,
+      });
 
-    emitJson({
-      findingId: result.finding.id,
-      sessionId: result.finding.sessionId,
-      observationId: result.finding.observationId,
-      type: result.finding.type,
-      severity: result.finding.severity,
-      recommendedTestLayer: result.finding.recommendedTestLayer,
-    });
-  });
+      return {
+        findingId: result.finding.id,
+        sessionId: result.finding.sessionId,
+        observationId: result.finding.observationId,
+        type: result.finding.type,
+        severity: result.finding.severity,
+        recommendedTestLayer: result.finding.recommendedTestLayer,
+      };
+    }),
+  );
 
 cli
-  .command("finding report", "Generate a triage findings report")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--session <sessionId>", "Session ID")
-  .action(async (options: FindingReportCommandOptions) => {
-    if (!options.session) {
-      throw new Error("The --session option is required.");
-    }
+  .command("finding report", "triage findings レポートを生成する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--session <sessionId>", "セッション ID")
+  .action(
+    createEnvelopeAction(async (options: FindingReportCommandOptions) => {
+      if (!options.session) {
+        throw new Error("--session オプションは必須です。");
+      }
 
-    const config = await readPluginConfig(options.config, options.manifest);
+      const config = await readPluginConfig(options.config, options.manifest);
 
-    const report = await generateTriageReport({
-      sessionId: options.session,
-      config,
-    });
+      const report = await generateTriageReport({
+        sessionId: options.session,
+        config,
+      });
 
-    emitJson({
-      sessionId: report.sessionId,
-      totalFindings: report.totalFindings,
-      countByType: report.countByType,
-      countBySeverity: report.countBySeverity,
-      findings: report.findings.map((f) => ({
-        id: f.id,
-        type: f.type,
-        title: f.title,
-        severity: f.severity,
-        recommendedTestLayer: f.recommendedTestLayer,
-      })),
-    });
-  });
+      return {
+        sessionId: report.sessionId,
+        totalFindings: report.totalFindings,
+        countByType: report.countByType,
+        countBySeverity: report.countBySeverity,
+        findings: report.findings.map((f) => ({
+          id: f.id,
+          type: f.type,
+          title: f.title,
+          severity: f.severity,
+          recommendedTestLayer: f.recommendedTestLayer,
+        })),
+      };
+    }),
+  );
 
 cli
   .command(
     "finding automation-report",
-    "Generate an automation candidate report",
+    "automation candidate レポートを生成する",
   )
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--session <sessionId>", "Session ID")
-  .action(async (options: FindingReportCommandOptions) => {
-    if (!options.session) {
-      throw new Error("The --session option is required.");
-    }
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--session <sessionId>", "セッション ID")
+  .action(
+    createEnvelopeAction(async (options: FindingReportCommandOptions) => {
+      if (!options.session) {
+        throw new Error("--session オプションは必須です。");
+      }
 
-    const config = await readPluginConfig(options.config, options.manifest);
+      const config = await readPluginConfig(options.config, options.manifest);
 
-    const report = await generateAutomationReport({
-      sessionId: options.session,
-      config,
-    });
+      const report = await generateAutomationReport({
+        sessionId: options.session,
+        config,
+      });
 
-    emitJson({
-      sessionId: report.sessionId,
-      totalCandidates: report.totalCandidates,
-      countByLayer: report.countByLayer,
-      candidates: report.candidates.map((c) => ({
-        id: c.id,
-        title: c.title,
-        severity: c.severity,
-        recommendedTestLayer: c.recommendedTestLayer,
-        automationRationale: c.automationRationale,
-      })),
-    });
-  });
+      return {
+        sessionId: report.sessionId,
+        totalCandidates: report.totalCandidates,
+        countByLayer: report.countByLayer,
+        candidates: report.candidates.map((c) => ({
+          id: c.id,
+          title: c.title,
+          severity: c.severity,
+          recommendedTestLayer: c.recommendedTestLayer,
+          automationRationale: c.automationRationale,
+        })),
+      };
+    }),
+  );
 
 cli
-  .command("finding handover", "Write triage-findings handover document")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--session <sessionId>", "Session ID")
-  .action(async (options: FindingReportCommandOptions) => {
-    if (!options.session) {
-      throw new Error("The --session option is required.");
-    }
+  .command("finding handover", "triage-findings handover 文書を書き出す")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--session <sessionId>", "セッション ID")
+  .action(
+    createEnvelopeAction(async (options: FindingReportCommandOptions) => {
+      if (!options.session) {
+        throw new Error("--session オプションは必須です。");
+      }
 
-    const config = await readPluginConfig(options.config, options.manifest);
+      const config = await readPluginConfig(options.config, options.manifest);
 
-    const result = await writeTriageHandover({
-      sessionId: options.session,
-      config,
-    });
+      const result = await writeTriageHandover({
+        sessionId: options.session,
+        config,
+      });
 
-    emitJson({
-      sessionId: result.triageReport.sessionId,
-      totalFindings: result.triageReport.totalFindings,
-      totalAutomationCandidates: result.automationReport.totalCandidates,
-      handoverPath: result.handover.filePath,
-    });
-  });
+      return {
+        sessionId: result.triageReport.sessionId,
+        totalFindings: result.triageReport.totalFindings,
+        totalAutomationCandidates: result.automationReport.totalCandidates,
+        handoverPath: result.handover.filePath,
+      };
+    }),
+  );
 
 cli
   .command(
     "export-artifacts",
-    "Export final artifacts (brief, gap map, charters, findings, automation candidates)",
+    "最終成果物を出力する (brief, gap map, charters, findings, automation candidates)",
   )
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--pr-intake-id <prIntakeId>", "PR intake record ID")
-  .action(async (options: ExportArtifactsCommandOptions) => {
-    if (!options.prIntakeId) {
-      throw new Error("The --pr-intake-id option is required.");
-    }
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr-intake-id <prIntakeId>", "PR intake レコード ID")
+  .action(
+    createEnvelopeAction(async (options: ExportArtifactsCommandOptions) => {
+      if (!options.prIntakeId) {
+        throw new Error("--pr-intake-id オプションは必須です。");
+      }
 
-    const config = await readPluginConfig(options.config, options.manifest);
+      const config = await readPluginConfig(options.config, options.manifest);
 
-    const result = await exportArtifacts({
-      prIntakeId: options.prIntakeId,
-      config,
-    });
+      const result = await exportArtifacts({
+        prIntakeId: options.prIntakeId,
+        config,
+      });
 
-    emitJson({
-      prIntakeId: options.prIntakeId,
-      artifacts: result.artifacts,
-      handoverPath: result.handover.filePath,
-    });
-  });
-
-cli
-  .command("progress summary", "Regenerate progress-summary.md from the DB")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .action(async (options: WorkspaceCommandOptions) => {
-    const result = await writeProgressSummary(options.config, options.manifest);
-
-    emitJson({
-      filePath: result.filePath,
-      currentStep: result.currentStep,
-      steps: result.snapshots.length,
-      completedSteps: result.snapshots.filter(
-        (snapshot) =>
-          snapshot.status === "completed" || snapshot.status === "skipped",
-      ).length,
-    });
-  });
+      return {
+        prIntakeId: options.prIntakeId,
+        artifacts: result.artifacts,
+        handoverPath: result.handover.filePath,
+      };
+    }),
+  );
 
 cli
-  .command("progress handover", "Write a step handover document and sync it")
-  .option("--config <configPath>", "Path to config.json")
-  .option("--manifest <manifestPath>", "Path to plugin.json")
-  .option("--step <stepName>", "Workflow step name")
+  .command("progress summary", "DB から progress-summary.md を再生成する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .action(
+    createEnvelopeAction(async (options: WorkspaceCommandOptions) => {
+      const result = await writeProgressSummary(options.config, options.manifest);
+
+      return {
+        filePath: result.filePath,
+        currentStep: result.currentStep,
+        steps: result.snapshots.length,
+        completedSteps: result.snapshots.filter(
+          (snapshot) =>
+            snapshot.status === "completed" || snapshot.status === "skipped",
+        ).length,
+      };
+    }),
+  );
+
+cli
+  .command("progress handover", "step handover 文書を書き出して同期する")
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--step <stepName>", "workflow step 名")
   .option(
     "--status <status>",
     "pending | in_progress | completed | interrupted | failed | skipped",
   )
-  .option("--summary <summary>", "Short summary for the handover")
-  .option("--next-step <nextStep>", "Next workflow step name")
-  .option("--body <body>", "Inline markdown body for the handover document")
-  .option("--body-file <bodyFile>", "Path to a markdown body file")
-  .action(async (options: HandoverCommandOptions) => {
-    if (!options.step || !options.status || !options.summary) {
-      throw new Error(
-        "The --step, --status, and --summary options are required.",
+  .option("--summary <summary>", "handover 用の短い要約")
+  .option("--next-step <nextStep>", "次の workflow step 名")
+  .option("--body <body>", "handover 本文の Markdown")
+  .option("--body-file <bodyFile>", "handover 本文 Markdown ファイルのパス")
+  .action(
+    createEnvelopeAction(async (options: HandoverCommandOptions) => {
+      if (!options.step || !options.status || !options.summary) {
+        throw new Error(
+          "--step、--status、--summary は必須です。",
+        );
+      }
+
+      const body = await readBodyOption(options.body, options.bodyFile);
+      const status = progressStatusSchema.parse(options.status);
+      const result = await writeStepHandover(
+        {
+          stepName: options.step,
+          status,
+          summary: options.summary,
+          nextStep: options.nextStep,
+          body,
+          enforceWorkflowPrerequisites: true,
+        },
+        options.config,
+        options.manifest,
       );
-    }
 
-    const body = await readBodyOption(options.body, options.bodyFile);
-    const status = progressStatusSchema.parse(options.status);
-    const result = await writeStepHandover(
-      {
-        stepName: options.step,
-        status,
-        summary: options.summary,
-        nextStep: options.nextStep,
-        body,
-      },
-      options.config,
-      options.manifest,
-    );
-
-    emitJson({
-      filePath: result.filePath,
-      step: result.snapshot.stepName,
-      status: result.snapshot.status,
-      nextStep: result.snapshot.nextStep,
-      updatedAt: result.snapshot.updatedAt,
-    });
-  });
+      return {
+        filePath: result.filePath,
+        step: result.snapshot.stepName,
+        status: result.snapshot.status,
+        nextStep: result.snapshot.nextStep,
+        updatedAt: result.snapshot.updatedAt,
+      };
+    }),
+  );
 
 cli.help();
-cli.parse();
+export async function main(argv: string[] = process.argv): Promise<void> {
+  try {
+    cli.parse(argv);
+  } catch (error) {
+    process.exitCode = 1;
+    emitJsonEnvelope(formatErrorEnvelope(error));
+  }
+}
 
-function emitJson(payload: unknown): void {
-  console.log(JSON.stringify(payload, null, 2));
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  void main();
 }
 
 async function readBodyOption(
@@ -775,7 +855,7 @@ async function readBodyOption(
   bodyFile: string | undefined,
 ): Promise<string | null> {
   if (inlineBody && bodyFile) {
-    throw new Error("Use either --body or --body-file, but not both.");
+    throw new Error("--body か --body-file のどちらか一方だけを指定してください。");
   }
 
   if (bodyFile) {

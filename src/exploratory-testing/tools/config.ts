@@ -45,7 +45,7 @@ export async function readPluginConfig(
 
   if (!(await pathExists(absoluteConfigPath))) {
     throw new Error(
-      `Config file not found at ${absoluteConfigPath}. Run exploratory-testing setup first.`,
+      `config ファイルが見つかりません: ${absoluteConfigPath}。先に exploratory-testing setup を実行してください。`,
     );
   }
 

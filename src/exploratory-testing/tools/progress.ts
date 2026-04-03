@@ -38,7 +38,9 @@ export type ProgressSummaryWriteResult = {
 };
 
 export async function writeStepHandover(
-  input: WriteStepHandoverInput,
+  input: WriteStepHandoverInput & {
+    readonly enforceWorkflowPrerequisites?: boolean;
+  },
   configPath = "config.json",
   manifestPath = ".claude-plugin/plugin.json",
 ): Promise<StepHandoverWriteResult> {
@@ -49,7 +51,9 @@ export async function writeStepHandover(
 
 export async function writeStepHandoverFromConfig(
   config: ResolvedPluginConfig,
-  input: WriteStepHandoverInput,
+  input: WriteStepHandoverInput & {
+    readonly enforceWorkflowPrerequisites?: boolean;
+  },
 ): Promise<StepHandoverWriteResult> {
   const skill = getWorkflowSkillOrThrow(input.stepName);
   const stepNumber = getWorkflowStepNumber(input.stepName);
@@ -62,6 +66,9 @@ export async function writeStepHandoverFromConfig(
     createStepProgressFilename(input.stepName),
   );
   initializeWorkspaceDatabase(config.paths.database);
+  if (input.enforceWorkflowPrerequisites) {
+    assertPreviousStepCompleted(config.paths.database, input.stepName);
+  }
   const fileContents = matter.stringify(
     buildStepHandoverBody(skill.title, input.summary, nextStep, input.body),
     {
@@ -110,6 +117,34 @@ export async function writeStepHandoverFromConfig(
     filePath,
     snapshot,
   };
+}
+
+function assertPreviousStepCompleted(
+  databasePath: string,
+  stepName: string,
+): void {
+  const stepNumber = getWorkflowStepNumber(stepName);
+  if (stepNumber === 1) {
+    return;
+  }
+
+  const snapshots = listStepProgressSnapshots(databasePath);
+  const previousSnapshot = snapshots[stepNumber - 2];
+  if (!previousSnapshot) {
+    throw new Error(
+      `step ${stepName} の前提を判定できません。workflow のスナップショットが不足しています。`,
+    );
+  }
+
+  const previousSkill = getWorkflowSkillOrThrow(previousSnapshot.stepName);
+
+  if (previousSnapshot.status === "completed") {
+    return;
+  }
+
+  throw new Error(
+    `${previousSkill.title} が completed になるまで ${stepName} の handover は書き込めません。現在の状態: ${previousSnapshot.status}。`,
+  );
 }
 
 export async function writeProgressSummary(

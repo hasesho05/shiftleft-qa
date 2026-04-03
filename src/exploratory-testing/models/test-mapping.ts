@@ -64,7 +64,7 @@ export const testSummarySchema = schema(
     testAssetPath: nonEmptyString(),
     layer: testLayerSchema,
     coveredAspects: v.array(coverageAspectSchema),
-    coverageConfidence: v.optional(coverageConfidenceSchema, "confirmed"),
+    coverageConfidence: v.optional(coverageConfidenceSchema, "inferred"),
     description: nonEmptyString(),
   }),
 );

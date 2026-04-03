@@ -1,53 +1,34 @@
 ---
 name: export-artifacts
-description: Export the final exploratory testing brief, charters, and findings reports.
+description: 最終的な exploratory testing brief、charters、findings report を出力する。
 ---
 
-# Export Artifacts
+# 成果物出力
 
-## Purpose
+## 目的
 
-Generate stable, shareable artifacts from the current plugin state.
-All artifacts are written to the configured `artifactsDirectory` (default `output/`).
+現在の plugin state から、安定して共有できる成果物を生成する。
 
-## Prerequisites
+## 前提条件
 
-The following workflow steps should be completed before exporting:
+- `setup`、`pr-intake`、`discover-context`、`map-tests`、`assess-gaps`、`generate-charters`、`run-session`、`triage-findings` が完了していること。
+- 出力したい PR の `pr-intake` record ID を把握していること。
 
-1. `setup` — workspace initialized
-2. `pr-intake` — PR/MR ingested
-3. `discover-context` — change analysis complete
-4. `map-tests` — test mapping and coverage gap map built
-5. `assess-gaps` — risk scores and exploration themes generated
-6. `generate-charters` — session charters created
-7. `run-session` — at least one session executed
-8. `triage-findings` — findings triaged
+## 実行手順
 
-## CLI Usage
+1. `bun run dev export-artifacts --pr-intake-id <id>` を実行する。
+2. `output/` に `exploration-brief.md`、`coverage-gap-map.md`、`session-charters.md`、`findings-report.md`、`automation-candidate-report.md` が出力されることを確認する。
+3. 最終 handover は `.exploratory-testing/progress/09-export-artifacts.md` を読む。
 
-```bash
-bun run dev export-artifacts --pr-intake-id <id>
-```
+## 再開方法
 
-Options:
-- `--pr-intake-id <id>` (required) — the PR intake record ID
-- `--config <path>` — path to config.json (default: `config.json`)
-- `--manifest <path>` — path to plugin.json (default: `.claude-plugin/plugin.json`)
+- 上流データが変わった場合は再度 export を実行する。ファイルは上書きされる。
+- 前提成果物不足で失敗した場合は、不足している upstream step を先に再実行してから再試行する。
 
-## Output Files
+## 出力ファイル
 
-| File | Description |
-|---|---|
-| `exploration-brief.md` | PR summary, changed files, change categories, viewpoint seeds, high-risk areas |
-| `coverage-gap-map.md` | Coverage gap entries, missing test layers, test assets |
-| `session-charters.md` | All generated charters with scope, frameworks, targets, session status |
-| `findings-report.md` | All findings organized by type and severity |
-| `automation-candidate-report.md` | Automation candidates grouped by recommended test layer |
-
-## Idempotency
-
-Running `export-artifacts` multiple times for the same PR intake produces identical output when the underlying data has not changed. Files are overwritten in place.
-
-## Handover
-
-On completion, writes `09-export-artifacts.md` to the progress directory and updates the progress summary.
+- `exploration-brief.md`
+- `coverage-gap-map.md`
+- `session-charters.md`
+- `findings-report.md`
+- `automation-candidate-report.md`

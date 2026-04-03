@@ -123,15 +123,21 @@ async function runFullPipeline(
 
   // Step 7: handoff (skipped in tests — requires GitHub API)
 
-  // Step 8: generate-charters (manual-exploration items only)
+  // Step 8: generate-charters (manual-exploration items only, with pruning)
   const manualItems = listAllocationItemsByDestination(
     databasePath,
     assess.persisted.id,
     "manual-exploration",
   );
+  const devBoxItems = listAllocationItemsByDestination(
+    databasePath,
+    assess.persisted.id,
+    "dev-box",
+  );
   const charters = await runGenerateChartersFromAllocation(
     assess.persisted,
     manualItems,
+    devBoxItems,
     mapping.persisted.coverageGapMap,
     config,
   );

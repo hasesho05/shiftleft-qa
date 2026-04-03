@@ -565,6 +565,12 @@ cli
       return {
         riskAssessmentId: result.persisted.riskAssessmentId,
         chartersGenerated: result.persisted.charters.length,
+        pruning: {
+          selectedCount: result.pruning.selectedItemIds.length,
+          droppedCount: result.pruning.droppedItems.length,
+          budgetUsedMinutes: result.pruning.budgetUsedMinutes,
+          budgetMinutes: result.pruning.budgetMinutes,
+        },
         handoverPath: result.handover.filePath,
         status: result.handover.snapshot.status,
       };

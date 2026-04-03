@@ -123,9 +123,16 @@ describe("run-session tool", () => {
       "manual-exploration",
     );
 
+    const devBoxItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "dev-box",
+    );
+
     const charterResult = await runGenerateChartersFromAllocation(
       assessResult.persisted,
       manualItems,
+      devBoxItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );

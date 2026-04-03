@@ -1,5 +1,9 @@
 import { generateSessionCharters } from "../analysis/generate-session-charters";
 import {
+  type PruningInput,
+  pruneManualExplorationItems,
+} from "../analysis/prune-manual-exploration";
+import {
   type PersistedAllocationItem,
   type PersistedRiskAssessment,
   type PersistedSessionCharters,
@@ -13,6 +17,11 @@ import {
 } from "../db/workspace-repository";
 import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
+import {
+  DEFAULT_EXPLORATION_BUDGET_MINUTES,
+  type DroppedItem,
+  type PruningResult,
+} from "../models/pruning";
 import type { ExplorationTheme } from "../models/risk-assessment";
 import type {
   SessionCharter,
@@ -35,6 +44,7 @@ export type GenerateChartersInput = {
 
 export type GenerateChartersResult = {
   readonly persisted: PersistedSessionCharters;
+  readonly pruning: PruningResult;
   readonly handover: StepHandoverWriteResult;
 };
 
@@ -102,9 +112,16 @@ export async function runGenerateCharters(
     "manual-exploration",
   );
 
+  const devBoxItems = listAllocationItemsByDestination(
+    config.paths.database,
+    riskAssessment.id,
+    "dev-box",
+  );
+
   return runGenerateChartersFromAllocation(
     riskAssessment,
     manualItems,
+    devBoxItems,
     testMapping.coverageGapMap,
     config,
   );
@@ -113,12 +130,27 @@ export async function runGenerateCharters(
 export async function runGenerateChartersFromAllocation(
   riskAssessment: PersistedRiskAssessment,
   manualItems: readonly PersistedAllocationItem[],
+  devBoxItems: readonly PersistedAllocationItem[],
   coverageGapMap: readonly CoverageGapEntry[],
   config: ResolvedPluginConfig,
 ): Promise<GenerateChartersResult> {
+  const pruningInput: PruningInput = {
+    manualItems,
+    devBoxItems,
+    themes: riskAssessment.explorationThemes,
+    budgetMinutes: DEFAULT_EXPLORATION_BUDGET_MINUTES,
+  };
+
+  const pruning = pruneManualExplorationItems(pruningInput);
+
+  const selectedItemSet = new Set(pruning.selectedItemIds);
+  const selectedItems = manualItems.filter((item) =>
+    selectedItemSet.has(item.id),
+  );
+
   const filteredThemes = filterThemesByAllocation(
     riskAssessment.explorationThemes,
-    manualItems,
+    selectedItems,
   );
   const charters = generateSessionCharters(filteredThemes, coverageGapMap);
 
@@ -133,16 +165,16 @@ export async function runGenerateChartersFromAllocation(
     generationResult,
   );
 
-  const body = buildHandoverBody(persisted);
+  const body = buildHandoverBody(persisted, pruning.droppedItems);
 
   const handover = await writeStepHandoverFromConfig(config, {
     stepName: "generate-charters",
     status: "completed",
-    summary: buildHandoverSummary(charters, manualItems.length),
+    summary: buildHandoverSummary(charters, selectedItems.length, pruning),
     body,
   });
 
-  return { persisted, handover };
+  return { persisted, pruning, handover };
 }
 
 export function filterThemesByAllocation(
@@ -167,16 +199,23 @@ export function filterThemesByAllocation(
 
 function buildHandoverSummary(
   charters: readonly SessionCharter[],
-  manualItemCount: number,
+  selectedCount: number,
+  pruning: PruningResult,
 ): string {
   const distinctFrameworks = [
     ...new Set(charters.flatMap((c) => c.selectedFrameworks)),
   ];
   const totalMinutes = charters.reduce((sum, c) => sum + c.timeboxMinutes, 0);
-  return `Generated ${charters.length} charters from ${manualItemCount} manual-exploration items; frameworks: ${distinctFrameworks.join(", ")}; total timebox: ${totalMinutes}min`;
+  const droppedCount = pruning.droppedItems.length;
+  const droppedSuffix =
+    droppedCount > 0 ? `; pruned ${droppedCount} items` : "";
+  return `Generated ${charters.length} charters from ${selectedCount} selected items (budget: ${pruning.budgetUsedMinutes}/${pruning.budgetMinutes}min); frameworks: ${distinctFrameworks.join(", ")}; total timebox: ${totalMinutes}min${droppedSuffix}`;
 }
 
-function buildHandoverBody(charters: PersistedSessionCharters): string {
+function buildHandoverBody(
+  charters: PersistedSessionCharters,
+  droppedItems: readonly DroppedItem[],
+): string {
   const lines = [
     `# Session Charters (risk_assessment_id: ${charters.riskAssessmentId})`,
     "",
@@ -239,6 +278,22 @@ function buildHandoverBody(charters: PersistedSessionCharters): string {
     lines.push("**Stop Conditions**:", "");
     for (const condition of charter.stopConditions) {
       lines.push(`- ${condition}`);
+    }
+    lines.push("");
+  }
+
+  if (droppedItems.length > 0) {
+    lines.push(
+      "## Deprioritized (available if time permits)",
+      "",
+      "| Title | Risk | Reason | Est. |",
+      "| --- | --- | --- | --- |",
+    );
+
+    for (const dropped of droppedItems) {
+      lines.push(
+        `| ${escapePipe(dropped.title)} | ${dropped.riskLevel} | ${dropped.reason} | ${dropped.estimatedMinutes}min |`,
+      );
     }
     lines.push("");
   }

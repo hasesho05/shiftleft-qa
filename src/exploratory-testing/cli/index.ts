@@ -180,7 +180,10 @@ cli
   .option("--manifest <manifestPath>", "plugin.json のパス")
   .action(
     createEnvelopeAction(async (options: WorkspaceCommandOptions) => {
-      const result = await initializeWorkspace(options.config, options.manifest);
+      const result = await initializeWorkspace(
+        options.config,
+        options.manifest,
+      );
 
       return {
         createdConfig: result.createdConfig,
@@ -611,9 +614,7 @@ cli
           );
         }
         if (!options.rationale) {
-          throw new Error(
-            "automation-candidate では --rationale が必須です。",
-          );
+          throw new Error("automation-candidate では --rationale が必須です。");
         }
       }
 
@@ -776,7 +777,10 @@ cli
   .option("--manifest <manifestPath>", "plugin.json のパス")
   .action(
     createEnvelopeAction(async (options: WorkspaceCommandOptions) => {
-      const result = await writeProgressSummary(options.config, options.manifest);
+      const result = await writeProgressSummary(
+        options.config,
+        options.manifest,
+      );
 
       return {
         filePath: result.filePath,
@@ -806,9 +810,7 @@ cli
   .action(
     createEnvelopeAction(async (options: HandoverCommandOptions) => {
       if (!options.step || !options.status || !options.summary) {
-        throw new Error(
-          "--step、--status、--summary は必須です。",
-        );
+        throw new Error("--step、--status、--summary は必須です。");
       }
 
       const body = await readBodyOption(options.body, options.bodyFile);
@@ -855,7 +857,9 @@ async function readBodyOption(
   bodyFile: string | undefined,
 ): Promise<string | null> {
   if (inlineBody && bodyFile) {
-    throw new Error("--body か --body-file のどちらか一方だけを指定してください。");
+    throw new Error(
+      "--body か --body-file のどちらか一方だけを指定してください。",
+    );
   }
 
   if (bodyFile) {

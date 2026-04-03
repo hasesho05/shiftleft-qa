@@ -2,6 +2,7 @@ import {
   type PersistedPrIntake,
   savePrIntake,
 } from "../db/workspace-repository";
+import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
 import type { PrMetadata } from "../models/pr-intake";
 import { fetchPrMetadata } from "../scm/fetch-pr";
@@ -10,7 +11,6 @@ import {
   type StepHandoverWriteResult,
   writeStepHandoverFromConfig,
 } from "./progress";
-import { escapePipe } from "../lib/markdown";
 
 export type PrIntakeInput = {
   readonly prNumber: number;

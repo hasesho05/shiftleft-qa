@@ -7,6 +7,7 @@ import {
   findPrIntake,
   findRiskAssessment,
   findTestMapping,
+  listAllocationItems,
   listAllocationItemsByDestination,
   saveSessionCharters,
 } from "../db/workspace-repository";
@@ -84,6 +85,17 @@ export async function runGenerateCharters(
     );
   }
 
+  const allocationItems = listAllocationItems(
+    config.paths.database,
+    riskAssessment.id,
+  );
+
+  if (allocationItems.length === 0) {
+    throw new Error(
+      `Allocation items not found for risk_assessment_id=${riskAssessment.id}. Run allocate run first.`,
+    );
+  }
+
   const manualItems = listAllocationItemsByDestination(
     config.paths.database,
     riskAssessment.id,
@@ -145,6 +157,9 @@ export function filterThemesByAllocation(
     manualItems.flatMap((item) => item.changedFilePaths),
   );
 
+  // `dev-box` items are intentionally excluded here because they should be
+  // verified by the implementer before QA handoff, not converted into
+  // exploratory charters for the later manual session phase.
   return themes.filter((theme) =>
     theme.targetFiles.some((file) => manualFilePaths.has(file)),
   );

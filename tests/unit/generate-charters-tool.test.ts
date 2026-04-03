@@ -12,6 +12,7 @@ import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import { runDiscoverContextFromIntake } from "../../src/exploratory-testing/tools/discover-context";
 import {
   filterThemesByAllocation,
+  runGenerateCharters,
   runGenerateChartersFromAllocation,
 } from "../../src/exploratory-testing/tools/generate-charters";
 import { runMapTestsFromAnalysis } from "../../src/exploratory-testing/tools/map-tests";
@@ -337,6 +338,39 @@ describe("runGenerateChartersFromAllocation", () => {
 
     expect(result.persisted.charters.length).toBe(0);
   });
+
+  it("rejects when allocation has not been run for the risk assessment", async () => {
+    const workspace = await setupWorkspace();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSampleMetadata(),
+    );
+    const contextResult = await runDiscoverContextFromIntake(prIntake, config);
+    const mappingResult = await runMapTestsFromAnalysis(
+      contextResult.persisted,
+      prIntake,
+      config,
+    );
+    await runAssessGapsFromMapping(
+      mappingResult.persisted,
+      contextResult.persisted,
+      config,
+    );
+
+    await expect(
+      runGenerateCharters({
+        prNumber: prIntake.prNumber,
+        provider: prIntake.provider,
+        repository: prIntake.repository,
+        configPath: workspace.configPath,
+        manifestPath: workspace.manifestPath,
+      }),
+    ).rejects.toThrow(/Run allocate run first/);
+  });
 });
 
 describe("filterThemesByAllocation", () => {
@@ -401,5 +435,52 @@ describe("filterThemesByAllocation", () => {
 
     const filtered = filterThemesByAllocation(themes, []);
     expect(filtered).toHaveLength(0);
+  });
+
+  it("does not include dev-box-only files in charter scope", () => {
+    const themes = [
+      {
+        title: "Theme A",
+        description: "desc A",
+        frameworks: ["error-guessing" as const],
+        targetFiles: ["src/a.ts"],
+        riskLevel: "high" as const,
+        estimatedMinutes: 15,
+      },
+      {
+        title: "Theme B",
+        description: "desc B",
+        frameworks: ["sampling" as const],
+        targetFiles: ["src/devbox.ts"],
+        riskLevel: "low" as const,
+        estimatedMinutes: 10,
+      },
+    ];
+
+    const manualItems = [
+      {
+        id: 1,
+        riskAssessmentId: 1,
+        title: "Manual exploration for src/a.ts",
+        changedFilePaths: ["src/a.ts"],
+        riskLevel: "high" as const,
+        recommendedDestination: "manual-exploration" as const,
+        confidence: 0.35,
+        rationale: "test",
+        sourceSignals: {
+          categories: [],
+          existingTestLayers: [],
+          gapAspects: [],
+          reviewComments: [],
+          riskSignals: [],
+        },
+        createdAt: "2026-04-01T00:00:00Z",
+        updatedAt: "2026-04-01T00:00:00Z",
+      },
+    ];
+
+    const filtered = filterThemesByAllocation(themes, manualItems);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0]?.title).toBe("Theme A");
   });
 });

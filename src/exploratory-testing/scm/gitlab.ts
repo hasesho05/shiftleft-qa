@@ -59,6 +59,8 @@ export const glabCloseIssueSchema = schema(
 
 // --- Data types ---
 
+export type GlabDiscussion = v.InferOutput<typeof glabDiscussionSchema>;
+
 export type GlabMrData = {
   readonly prNumber: number;
   readonly title: string;
@@ -69,7 +71,7 @@ export type GlabMrData = {
   readonly headSha: string;
   readonly projectId: number;
   readonly webUrl: string;
-  readonly discussions: readonly Record<string, unknown>[];
+  readonly discussions: readonly GlabDiscussion[];
 };
 
 // --- Parse functions ---
@@ -87,7 +89,7 @@ export function parseGlabMrJson(json: Record<string, unknown>): GlabMrData {
     headSha: parsed.sha,
     projectId: parsed.project_id,
     webUrl: parsed.web_url,
-    discussions: parsed.Discussions as readonly Record<string, unknown>[],
+    discussions: parsed.Discussions,
   };
 }
 
@@ -120,7 +122,7 @@ export function countDiffStats(diff: string): {
   let deletions = 0;
 
   for (const line of diff.split("\n")) {
-    if (line.startsWith("+++") || line.startsWith("---")) {
+    if (isDiffHeaderLine(line)) {
       continue;
     }
     if (line.startsWith("+")) {
@@ -143,14 +145,12 @@ export function parseGlabCloseIssuesJson(
 }
 
 export function parseGlabDiscussionsJson(
-  discussions: readonly Record<string, unknown>[],
+  discussions: readonly GlabDiscussion[],
 ): readonly ReviewComment[] {
   const comments: ReviewComment[] = [];
 
   for (const discussion of discussions) {
-    const parsed = glabDiscussionSchema.parse(discussion);
-
-    for (const note of parsed.notes) {
+    for (const note of discussion.notes) {
       if (note.body.trim().length === 0) {
         continue;
       }
@@ -203,6 +203,15 @@ export function buildGitlabPrMetadata(
 }
 
 // --- Internal helpers ---
+
+function isDiffHeaderLine(line: string): boolean {
+  return (
+    line.startsWith("--- a/") ||
+    line === "--- /dev/null" ||
+    line.startsWith("+++ b/") ||
+    line === "+++ /dev/null"
+  );
+}
 
 function mapGlabFileStatus(parsed: {
   new_file: boolean;

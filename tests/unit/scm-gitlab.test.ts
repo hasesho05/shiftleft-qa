@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type GlabDiscussion,
   buildGitlabPrMetadata,
   countDiffStats,
   extractRepositoryFromWebUrl,
@@ -232,6 +233,16 @@ describe("countDiffStats", () => {
     expect(result.additions).toBe(1);
     expect(result.deletions).toBe(1);
   });
+
+  it("counts content lines starting with ++ or -- correctly", () => {
+    const diff =
+      "--- a/src/file.ts\n+++ b/src/file.ts\n@@ -1,2 +1,2 @@\n-old\n+++ not a header\n";
+
+    const result = countDiffStats(diff);
+
+    expect(result.additions).toBe(1);
+    expect(result.deletions).toBe(1);
+  });
 });
 
 describe("parseGlabCloseIssuesJson", () => {
@@ -255,7 +266,7 @@ describe("parseGlabCloseIssuesJson", () => {
 
 describe("parseGlabDiscussionsJson", () => {
   it("extracts review comments from discussions", () => {
-    const discussions = [
+    const discussions: GlabDiscussion[] = [
       {
         notes: [
           {
@@ -294,7 +305,7 @@ describe("parseGlabDiscussionsJson", () => {
   });
 
   it("filters out empty body notes", () => {
-    const discussions = [
+    const discussions: GlabDiscussion[] = [
       {
         notes: [
           {

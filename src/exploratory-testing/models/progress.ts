@@ -1,36 +1,48 @@
-import { z } from "zod";
+import {
+  nonEmptyString,
+  nonNegativeInteger,
+  positiveInteger,
+  schema,
+  v,
+} from "../lib/validation";
 
-export const progressStatusSchema = z.enum([
-  "pending",
-  "in_progress",
-  "completed",
-  "interrupted",
-  "failed",
-  "skipped",
-]);
+export const progressStatusSchema = schema(
+  v.picklist([
+    "pending",
+    "in_progress",
+    "completed",
+    "interrupted",
+    "failed",
+    "skipped",
+  ]),
+);
 
-export const stepHandoverFrontmatterSchema = z.object({
-  step: z.number().int().positive(),
-  step_name: z.string().min(1),
-  skill: z.string().min(1),
-  status: progressStatusSchema,
-  updated_at: z.string().min(1),
-  completed_at: z.string().min(1).nullable().optional(),
-  next_step: z.string().min(1).nullable().optional(),
-});
+export const stepHandoverFrontmatterSchema = schema(
+  v.object({
+    step: positiveInteger(),
+    step_name: nonEmptyString(),
+    skill: nonEmptyString(),
+    status: progressStatusSchema,
+    updated_at: nonEmptyString(),
+    completed_at: v.optional(v.nullable(nonEmptyString())),
+    next_step: v.optional(v.nullable(nonEmptyString())),
+  }),
+);
 
-export const progressSummaryFrontmatterSchema = z.object({
-  last_updated: z.string().min(1),
-  current_step: z.string().min(1).nullable(),
-  completed_steps: z.number().int().nonnegative(),
-  total_steps: z.number().int().nonnegative(),
-});
+export const progressSummaryFrontmatterSchema = schema(
+  v.object({
+    last_updated: nonEmptyString(),
+    current_step: v.nullable(nonEmptyString()),
+    completed_steps: nonNegativeInteger(),
+    total_steps: nonNegativeInteger(),
+  }),
+);
 
-export type ProgressStatus = z.infer<typeof progressStatusSchema>;
-export type StepHandoverFrontmatter = z.infer<
+export type ProgressStatus = v.InferOutput<typeof progressStatusSchema>;
+export type StepHandoverFrontmatter = v.InferOutput<
   typeof stepHandoverFrontmatterSchema
 >;
-export type ProgressSummaryFrontmatter = z.infer<
+export type ProgressSummaryFrontmatter = v.InferOutput<
   typeof progressSummaryFrontmatterSchema
 >;
 

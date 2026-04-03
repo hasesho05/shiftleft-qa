@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { nonEmptyString, schema, v } from "../lib/validation";
 
 import type {
   ChangedFile,
@@ -6,52 +6,63 @@ import type {
   ReviewComment,
 } from "../models/pr-intake";
 
-// --- Zod schemas for gh CLI JSON output ---
+// --- Valibot schemas for gh CLI JSON output ---
 
-const ghAuthorSchema = z.object({
-  login: z.string(),
-});
+const ghAuthorSchema = schema(v.object({ login: v.string() }));
 
-export const ghPrViewSchema = z.object({
-  number: z.number(),
-  title: z.string(),
-  body: z.string().nullable().default(null),
-  author: ghAuthorSchema,
-  baseRefName: z.string(),
-  headRefName: z.string(),
-  headRefOid: z.string(),
-  closingIssuesReferences: z
-    .object({
-      nodes: z.array(z.object({ number: z.number() })).default([]),
-    })
-    .default({ nodes: [] }),
-});
+export const ghPrViewSchema = schema(
+  v.object({
+    number: v.number(),
+    title: v.string(),
+    body: v.optional(v.nullable(v.string()), null),
+    author: ghAuthorSchema,
+    baseRefName: v.string(),
+    headRefName: v.string(),
+    headRefOid: v.string(),
+    closingIssuesReferences: v.optional(
+      v.object({
+        nodes: v.optional(v.array(v.object({ number: v.number() })), []),
+      }),
+      { nodes: [] },
+    ),
+  }),
+);
 
-export const ghPrFileSchema = z.object({
-  path: z.string(),
-  additions: z.number().default(0),
-  deletions: z.number().default(0),
-  status: z.string().default("MODIFIED"),
-  previousFilename: z.string().optional(),
-});
+export const ghPrFileSchema = schema(
+  v.object({
+    path: v.string(),
+    additions: v.optional(v.number(), 0),
+    deletions: v.optional(v.number(), 0),
+    status: v.optional(v.string(), "MODIFIED"),
+    previousFilename: v.optional(nonEmptyString()),
+  }),
+);
 
-export const ghPrFilesResponseSchema = z.object({
-  files: z.array(ghPrFileSchema).default([]),
-});
+export const ghPrFilesResponseSchema = schema(
+  v.object({
+    files: v.optional(v.array(ghPrFileSchema), []),
+  }),
+);
 
-export const ghReviewSchema = z.object({
-  author: ghAuthorSchema,
-  body: z.string().default(""),
-  submittedAt: z.string().optional(),
-});
+export const ghReviewSchema = schema(
+  v.object({
+    author: ghAuthorSchema,
+    body: v.optional(v.string(), ""),
+    submittedAt: v.optional(nonEmptyString()),
+  }),
+);
 
-export const ghReviewsResponseSchema = z.object({
-  reviews: z.array(ghReviewSchema).default([]),
-});
+export const ghReviewsResponseSchema = schema(
+  v.object({
+    reviews: v.optional(v.array(ghReviewSchema), []),
+  }),
+);
 
-export const ghRepoViewSchema = z.object({
-  nameWithOwner: z.string(),
-});
+export const ghRepoViewSchema = schema(
+  v.object({
+    nameWithOwner: v.string(),
+  }),
+);
 
 // --- Data types ---
 

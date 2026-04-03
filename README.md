@@ -75,7 +75,7 @@ bun run check
 ## Proposed libraries
 
 - `cac`: small CLI definition
-- `zod`: runtime validation for config and JSON I/O
+- `valibot`: runtime validation for config and JSON I/O
 - `execa`: subprocess wrapper for `gh`, `git`, `glab`
 - `gray-matter`: markdown frontmatter parsing
 - `tinyglobby`: file discovery for tests, stories, fixtures

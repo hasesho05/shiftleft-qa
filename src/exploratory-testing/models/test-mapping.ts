@@ -1,39 +1,45 @@
-import { z } from "zod";
+import { nonEmptyString, positiveInteger, schema, v } from "../lib/validation";
 
 import { confidenceSchema } from "./change-analysis";
 
-export const testLayerSchema = z.enum([
-  "unit",
-  "e2e",
-  "visual",
-  "storybook",
-  "api",
-]);
+export const testLayerSchema = schema(
+  v.picklist(["unit", "e2e", "visual", "storybook", "api"]),
+);
 
-export type TestLayer = z.infer<typeof testLayerSchema>;
+export type TestLayer = v.InferOutput<typeof testLayerSchema>;
 
-export const coverageAspectSchema = z.enum([
-  "happy-path",
-  "error-path",
-  "boundary",
-  "permission",
-  "state-transition",
-  "mock-fixture",
-]);
+export const coverageAspectSchema = schema(
+  v.picklist([
+    "happy-path",
+    "error-path",
+    "boundary",
+    "permission",
+    "state-transition",
+    "mock-fixture",
+  ]),
+);
 
-export type CoverageAspect = z.infer<typeof coverageAspectSchema>;
+export type CoverageAspect = v.InferOutput<typeof coverageAspectSchema>;
 
-export const coverageStatusSchema = z.enum(["covered", "uncovered", "partial"]);
+export const coverageStatusSchema = schema(
+  v.picklist(["covered", "uncovered", "partial"]),
+);
 
-export type CoverageStatus = z.infer<typeof coverageStatusSchema>;
+export type CoverageStatus = v.InferOutput<typeof coverageStatusSchema>;
 
-export const explorationPrioritySchema = z.enum(["high", "medium", "low"]);
+export const explorationPrioritySchema = schema(
+  v.picklist(["high", "medium", "low"]),
+);
 
-export type ExplorationPriority = z.infer<typeof explorationPrioritySchema>;
+export type ExplorationPriority = v.InferOutput<
+  typeof explorationPrioritySchema
+>;
 
-export const coverageConfidenceSchema = z.enum(["confirmed", "inferred"]);
+export const coverageConfidenceSchema = schema(
+  v.picklist(["confirmed", "inferred"]),
+);
 
-export type CoverageConfidence = z.infer<typeof coverageConfidenceSchema>;
+export type CoverageConfidence = v.InferOutput<typeof coverageConfidenceSchema>;
 
 /** Numeric ordering for ExplorationPriority, usable in comparisons and sorts. */
 export const EXPLORATION_PRIORITY_ORDER: Record<ExplorationPriority, number> = {
@@ -42,43 +48,51 @@ export const EXPLORATION_PRIORITY_ORDER: Record<ExplorationPriority, number> = {
   low: 1,
 };
 
-export const testAssetSchema = z.object({
-  path: z.string().min(1),
-  layer: testLayerSchema,
-  relatedTo: z.array(z.string().min(1)),
-  confidence: confidenceSchema,
-});
+export const testAssetSchema = schema(
+  v.object({
+    path: nonEmptyString(),
+    layer: testLayerSchema,
+    relatedTo: v.array(nonEmptyString()),
+    confidence: confidenceSchema,
+  }),
+);
 
-export type TestAsset = z.infer<typeof testAssetSchema>;
+export type TestAsset = v.InferOutput<typeof testAssetSchema>;
 
-export const testSummarySchema = z.object({
-  testAssetPath: z.string().min(1),
-  layer: testLayerSchema,
-  coveredAspects: z.array(coverageAspectSchema),
-  coverageConfidence: coverageConfidenceSchema.default("confirmed"),
-  description: z.string().min(1),
-});
+export const testSummarySchema = schema(
+  v.object({
+    testAssetPath: nonEmptyString(),
+    layer: testLayerSchema,
+    coveredAspects: v.array(coverageAspectSchema),
+    coverageConfidence: v.optional(coverageConfidenceSchema, "confirmed"),
+    description: nonEmptyString(),
+  }),
+);
 
-export type TestSummary = z.infer<typeof testSummarySchema>;
+export type TestSummary = v.InferOutput<typeof testSummarySchema>;
 
-export const coverageGapEntrySchema = z.object({
-  changedFilePath: z.string().min(1),
-  aspect: coverageAspectSchema,
-  status: coverageStatusSchema,
-  coveredBy: z.array(z.string()),
-  explorationPriority: explorationPrioritySchema,
-});
+export const coverageGapEntrySchema = schema(
+  v.object({
+    changedFilePath: nonEmptyString(),
+    aspect: coverageAspectSchema,
+    status: coverageStatusSchema,
+    coveredBy: v.array(v.string()),
+    explorationPriority: explorationPrioritySchema,
+  }),
+);
 
-export type CoverageGapEntry = z.infer<typeof coverageGapEntrySchema>;
+export type CoverageGapEntry = v.InferOutput<typeof coverageGapEntrySchema>;
 
-export const testMappingResultSchema = z.object({
-  prIntakeId: z.number().int().positive(),
-  changeAnalysisId: z.number().int().positive(),
-  testAssets: z.array(testAssetSchema),
-  testSummaries: z.array(testSummarySchema),
-  coverageGapMap: z.array(coverageGapEntrySchema),
-  missingLayers: z.array(testLayerSchema),
-  mappedAt: z.string().min(1),
-});
+export const testMappingResultSchema = schema(
+  v.object({
+    prIntakeId: positiveInteger(),
+    changeAnalysisId: positiveInteger(),
+    testAssets: v.array(testAssetSchema),
+    testSummaries: v.array(testSummarySchema),
+    coverageGapMap: v.array(coverageGapEntrySchema),
+    missingLayers: v.array(testLayerSchema),
+    mappedAt: nonEmptyString(),
+  }),
+);
 
-export type TestMappingResult = z.infer<typeof testMappingResultSchema>;
+export type TestMappingResult = v.InferOutput<typeof testMappingResultSchema>;

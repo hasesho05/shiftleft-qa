@@ -236,7 +236,7 @@ describe("session charter repository", () => {
     expect(second.charters[0].title).toBe("Updated charter title");
   });
 
-  it("validates charters JSON on retrieval with Zod", async () => {
+  it("validates charters JSON on retrieval with Valibot", async () => {
     const workspace = await setupWorkspace();
     const { riskAssessmentId } = seedDependencies(workspace.databasePath);
 

@@ -1,44 +1,42 @@
-import { z } from "zod";
+import { nonEmptyString, positiveInteger, schema, v } from "../lib/validation";
 
-export const sessionStatusSchema = z.enum([
-  "planned",
-  "in_progress",
-  "interrupted",
-  "completed",
-]);
+export const sessionStatusSchema = schema(
+  v.picklist(["planned", "in_progress", "interrupted", "completed"]),
+);
 
-export type SessionStatus = z.infer<typeof sessionStatusSchema>;
+export type SessionStatus = v.InferOutput<typeof sessionStatusSchema>;
 
-export const observationOutcomeSchema = z.enum([
-  "pass",
-  "fail",
-  "unclear",
-  "suspicious",
-]);
+export const observationOutcomeSchema = schema(
+  v.picklist(["pass", "fail", "unclear", "suspicious"]),
+);
 
-export type ObservationOutcome = z.infer<typeof observationOutcomeSchema>;
+export type ObservationOutcome = v.InferOutput<typeof observationOutcomeSchema>;
 
-export const observationSchema = z.object({
-  targetedHeuristic: z.string().min(1),
-  action: z.string().min(1),
-  expected: z.string().min(1),
-  actual: z.string().min(1),
-  outcome: observationOutcomeSchema,
-  note: z.string(),
-  evidencePath: z.string().min(1).nullable(),
-});
+export const observationSchema = schema(
+  v.object({
+    targetedHeuristic: nonEmptyString(),
+    action: nonEmptyString(),
+    expected: nonEmptyString(),
+    actual: nonEmptyString(),
+    outcome: observationOutcomeSchema,
+    note: v.string(),
+    evidencePath: v.nullable(nonEmptyString()),
+  }),
+);
 
-export type Observation = z.infer<typeof observationSchema>;
+export type Observation = v.InferOutput<typeof observationSchema>;
 
-export const sessionSchema = z.object({
-  sessionChartersId: z.number().int().positive(),
-  charterIndex: z.number().int().min(0),
-  charterTitle: z.string().min(1),
-  status: sessionStatusSchema,
-  startedAt: z.string().min(1).nullable(),
-  interruptedAt: z.string().min(1).nullable(),
-  completedAt: z.string().min(1).nullable(),
-  interruptReason: z.string().min(1).nullable(),
-});
+export const sessionSchema = schema(
+  v.object({
+    sessionChartersId: positiveInteger(),
+    charterIndex: v.pipe(v.number(), v.integer(), v.minValue(0)),
+    charterTitle: nonEmptyString(),
+    status: sessionStatusSchema,
+    startedAt: v.nullable(nonEmptyString()),
+    interruptedAt: v.nullable(nonEmptyString()),
+    completedAt: v.nullable(nonEmptyString()),
+    interruptReason: v.nullable(nonEmptyString()),
+  }),
+);
 
-export type Session = z.infer<typeof sessionSchema>;
+export type Session = v.InferOutput<typeof sessionSchema>;

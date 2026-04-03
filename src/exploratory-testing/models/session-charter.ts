@@ -1,45 +1,61 @@
-import { z } from "zod";
+import { nonEmptyString, positiveInteger, schema, v } from "../lib/validation";
 
 import { explorationFrameworkSchema } from "./risk-assessment";
 
-export const observationCategorySchema = z.enum([
-  "ui",
-  "network",
-  "console",
-  "devtools",
-  "state",
-  "accessibility",
-  "performance",
-]);
+export const observationCategorySchema = schema(
+  v.picklist([
+    "ui",
+    "network",
+    "console",
+    "devtools",
+    "state",
+    "accessibility",
+    "performance",
+  ]),
+);
 
-export type ObservationCategory = z.infer<typeof observationCategorySchema>;
+export type ObservationCategory = v.InferOutput<
+  typeof observationCategorySchema
+>;
 
-export const observationTargetSchema = z.object({
-  category: observationCategorySchema,
-  description: z.string().min(1),
-});
+export const observationTargetSchema = schema(
+  v.object({
+    category: observationCategorySchema,
+    description: nonEmptyString(),
+  }),
+);
 
-export type ObservationTarget = z.infer<typeof observationTargetSchema>;
+export type ObservationTarget = v.InferOutput<typeof observationTargetSchema>;
 
-export const sessionCharterSchema = z.object({
-  title: z.string().min(1),
-  goal: z.string().min(1),
-  scope: z.array(z.string().min(1)).min(1),
-  selectedFrameworks: z.array(explorationFrameworkSchema).min(1),
-  preconditions: z.array(z.string().min(1)),
-  observationTargets: z.array(observationTargetSchema).min(1),
-  stopConditions: z.array(z.string().min(1)).min(1),
-  timeboxMinutes: z.number().int().min(1),
-});
+export const sessionCharterSchema = schema(
+  v.object({
+    title: nonEmptyString(),
+    goal: nonEmptyString(),
+    scope: v.pipe(v.array(nonEmptyString()), v.minLength(1)),
+    selectedFrameworks: v.pipe(
+      v.array(explorationFrameworkSchema),
+      v.minLength(1),
+    ),
+    preconditions: v.array(nonEmptyString()),
+    observationTargets: v.pipe(
+      v.array(observationTargetSchema),
+      v.minLength(1),
+    ),
+    stopConditions: v.pipe(v.array(nonEmptyString()), v.minLength(1)),
+    timeboxMinutes: positiveInteger(),
+  }),
+);
 
-export type SessionCharter = z.infer<typeof sessionCharterSchema>;
+export type SessionCharter = v.InferOutput<typeof sessionCharterSchema>;
 
-export const sessionCharterGenerationResultSchema = z.object({
-  riskAssessmentId: z.number().int().positive(),
-  charters: z.array(sessionCharterSchema),
-  generatedAt: z.string().min(1),
-});
+export const sessionCharterGenerationResultSchema = schema(
+  v.object({
+    riskAssessmentId: positiveInteger(),
+    charters: v.array(sessionCharterSchema),
+    generatedAt: nonEmptyString(),
+  }),
+);
 
-export type SessionCharterGenerationResult = z.infer<
+export type SessionCharterGenerationResult = v.InferOutput<
   typeof sessionCharterGenerationResultSchema
 >;

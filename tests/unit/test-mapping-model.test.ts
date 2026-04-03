@@ -106,7 +106,7 @@ describe("testSummarySchema", () => {
     expect(testSummarySchema.parse(input)).toEqual(input);
   });
 
-  it("defaults coverageConfidence to confirmed", () => {
+  it("defaults coverageConfidence to inferred", () => {
     const result = testSummarySchema.parse({
       testAssetPath: "tests/unit/auth.test.ts",
       layer: "unit",
@@ -114,7 +114,7 @@ describe("testSummarySchema", () => {
       description: "Tests login flow",
     });
 
-    expect(result.coverageConfidence).toBe("confirmed");
+    expect(result.coverageConfidence).toBe("inferred");
   });
 });
 

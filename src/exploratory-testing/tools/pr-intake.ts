@@ -10,6 +10,7 @@ import {
   type StepHandoverWriteResult,
   writeStepHandoverFromConfig,
 } from "./progress";
+import { escapePipe } from "../lib/markdown";
 
 export type PrIntakeInput = {
   readonly prNumber: number;
@@ -58,17 +59,17 @@ export async function savePrIntakeResult(
 
 function buildIntakeHandoverBody(metadata: PrMetadata): string {
   const lines = [
-    `# PR/MR Intake: ${metadata.repository}#${metadata.prNumber}`,
+    `# PR/MR Intake: ${escapePipe(metadata.repository)}#${metadata.prNumber}`,
     "",
     "## Metadata",
     "",
     `- **Provider**: ${metadata.provider}`,
-    `- **Repository**: ${metadata.repository}`,
+    `- **Repository**: ${escapePipe(metadata.repository)}`,
     `- **PR Number**: ${metadata.prNumber}`,
-    `- **Title**: ${metadata.title}`,
-    `- **Author**: ${metadata.author}`,
-    `- **Base Branch**: ${metadata.baseBranch}`,
-    `- **Head Branch**: ${metadata.headBranch}`,
+    `- **Title**: ${escapePipe(metadata.title)}`,
+    `- **Author**: ${escapePipe(metadata.author)}`,
+    `- **Base Branch**: ${escapePipe(metadata.baseBranch)}`,
+    `- **Head Branch**: ${escapePipe(metadata.headBranch)}`,
     `- **Head SHA**: ${metadata.headSha}`,
     "",
   ];
@@ -76,7 +77,7 @@ function buildIntakeHandoverBody(metadata: PrMetadata): string {
   if (metadata.linkedIssues.length > 0) {
     lines.push("## Linked Issues", "");
     for (const issue of metadata.linkedIssues) {
-      lines.push(`- ${issue}`);
+      lines.push(`- ${escapePipe(issue)}`);
     }
     lines.push("");
   }
@@ -89,7 +90,7 @@ function buildIntakeHandoverBody(metadata: PrMetadata): string {
   );
   for (const file of metadata.changedFiles) {
     lines.push(
-      `| ${file.path} | ${file.status} | +${file.additions} -${file.deletions} |`,
+      `| ${escapePipe(file.path)} | ${file.status} | +${file.additions} -${file.deletions} |`,
     );
   }
   lines.push("");
@@ -97,8 +98,10 @@ function buildIntakeHandoverBody(metadata: PrMetadata): string {
   if (metadata.reviewComments.length > 0) {
     lines.push("## Review Comments", "");
     for (const comment of metadata.reviewComments) {
-      const location = comment.path ? ` (${comment.path})` : "";
-      lines.push(`- **${comment.author}**${location}: ${comment.body}`);
+      const location = comment.path ? ` (${escapePipe(comment.path)})` : "";
+      lines.push(
+        `- **${escapePipe(comment.author)}**${location}: ${escapePipe(comment.body)}`,
+      );
     }
     lines.push("");
   }

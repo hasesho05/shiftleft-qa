@@ -1,34 +1,31 @@
 ---
 name: setup
-description: Initialize config, workspace state, and progress tracking for the exploratory testing plugin.
+description: exploratory testing plugin の config、workspace state、progress tracking を初期化する。
 ---
 
-# Setup
+# セットアップ
 
-## Purpose
+## 目的
 
-Prepare the project workspace so later skills can resume from files and local state instead of chat history.
+後続 step が会話履歴ではなく、ファイルと SQLite を正本として再開できるように workspace を初期化する。
 
-## Current status
+## 前提条件
 
-Implemented in `#7`.
+- リポジトリのルートで実行する。
+- `.claude-plugin/plugin.json` が存在することを確認する。
+- 次に PR を取り込むなら `gh` と `git` が使えることを確認する。
 
-## Intended outputs
+## 実行手順
 
-- `config.json`
-- `exploratory-testing.db`
-- `.exploratory-testing/progress/progress-summary.md`
-- `.exploratory-testing/progress/01-setup.md`
+1. `bun run dev setup` を実行する。
+2. `config.json`、`exploratory-testing.db`、`.exploratory-testing/progress/progress-summary.md`、`.exploratory-testing/progress/01-setup.md` が作成または更新されることを確認する。
+3. progress summary を読み、現在 step が `pr-intake` になっていることを確認する。
 
-## Intended CLI boundary
+## 再開方法
 
-- `exploratory-testing setup`
-- `exploratory-testing db init`
-- `exploratory-testing progress summary`
-- `exploratory-testing progress handover`
+- すでに setup 済みでも同じコマンドを再実行してよい。冪等に動く。
+- workspace を移動した場合は `config.json` を見直したうえで setup を再実行し、解決済みパスを更新する。
 
-## Notes
+## 次の Step
 
-- `config.json` stores relative paths.
-- CLI loads `config.json`, resolves absolute paths, and writes through TypeScript modules only.
-- Progress files use markdown with YAML frontmatter and are mirrored into the local SQLite state store.
+- `pr-intake`

@@ -1,25 +1,30 @@
 ---
 name: generate-charters
-description: Generate small, concrete exploratory testing charters from the current risk picture.
+description: 現在のリスク状況から、小さく具体的な exploratory testing charter を生成する。
 ---
 
-# Generate Charters
+# Charter 生成
 
-## Purpose
+## 目的
 
-Produce short, executable manual exploration plans that can be run one theme at a time.
+次のセッションで実行できる、短く具体的な手動探索計画を生成する。
 
-## Current status
+## 前提条件
 
-This skill is scaffolded in `#8`. Concrete charter generation behavior will be implemented in `#6`.
+- `assess-gaps` must be completed.
+- Risk themes and coverage gaps must be present in the database.
 
-## Intended outputs
+## 実行手順
 
-- session charters
-- preconditions
-- observation targets
-- stop conditions
+1. Run `bun run dev generate-charters --pr <number> --provider github --repository owner/repo`.
+2. Review each charter for scope, frameworks, preconditions, observation targets, stop conditions, and timebox.
+3. Read `.exploratory-testing/progress/06-generate-charters.md` for the handover summary.
 
-## Intended CLI boundary
+## 再開方法
 
-- `exploratory-testing generate-charters`
+- If the risk assessment changes, rerun this step before starting sessions.
+- Keep one charter focused on one theme; do not widen scope to fit extra checks.
+
+## 次の Step
+
+- `run-session`

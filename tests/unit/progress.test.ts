@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { listStepProgressSnapshots } from "../../src/exploratory-testing/db/workspace-repository";
 import {
   readProgressSummaryDocument,
   readStepHandoverDocument,
   writeStepHandover,
 } from "../../src/exploratory-testing/tools/progress";
-import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
+import {
+  initializeDatabaseFromConfig,
+  initializeWorkspace,
+} from "../../src/exploratory-testing/tools/setup";
 import {
   type TestWorkspace,
   cleanupTestWorkspace,
@@ -32,6 +36,7 @@ describe("writeStepHandover", () => {
         status: "in_progress",
         summary: "Collecting PR metadata and changed files.",
         nextStep: "discover-context",
+        enforceWorkflowPrerequisites: true,
       },
       workspace.configPath,
       workspace.manifestPath,
@@ -48,6 +53,56 @@ describe("writeStepHandover", () => {
     expect(summaryDocument.body).toContain(
       "| 2 | PR or MR intake | pr-intake | in_progress |",
     );
+  });
+
+  it("rejects out-of-order handovers until the previous step is completed", async () => {
+    const workspace = await registerWorkspace();
+    const initialized = await initializeDatabaseFromConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    await expect(
+      writeStepHandover(
+        {
+          stepName: "pr-intake",
+          status: "in_progress",
+          summary: "Collecting PR metadata and changed files.",
+          nextStep: "discover-context",
+          enforceWorkflowPrerequisites: true,
+        },
+        workspace.configPath,
+        workspace.manifestPath,
+      ),
+    ).rejects.toThrow(/setup.*completed/i);
+
+    const snapshots = listStepProgressSnapshots(initialized.databasePath);
+    expect(snapshots[0]?.status).toBe("pending");
+    expect(snapshots[1]?.status).toBe("pending");
+  });
+
+  it("allows setup handovers even when workflow prerequisites are enforced", async () => {
+    const workspace = await registerWorkspace();
+    const initialized = await initializeDatabaseFromConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const handover = await writeStepHandover(
+      {
+        stepName: "setup",
+        status: "completed",
+        summary: "Workspace state initialized for exploratory testing.",
+        nextStep: "pr-intake",
+        enforceWorkflowPrerequisites: true,
+      },
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const snapshots = listStepProgressSnapshots(initialized.databasePath);
+    expect(handover.snapshot.stepName).toBe("setup");
+    expect(snapshots[0]?.status).toBe("completed");
   });
 });
 

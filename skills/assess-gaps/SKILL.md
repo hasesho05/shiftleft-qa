@@ -1,24 +1,30 @@
 ---
 name: assess-gaps
-description: Identify coverage gaps and select exploratory frameworks based on risk.
+description: coverage gap を評価し、リスクにもとづいて探索フレームワークを選定する。
 ---
 
-# Assess Gaps
+# Gap 評価
 
-## Purpose
+## 目的
 
-Turn implementation and test context into a risk-driven gap map and a justified framework selection.
+change analysis と test map から優先度付きの探索テーマを作る。
 
-## Current status
+## 前提条件
 
-This skill is scaffolded in `#8`. Concrete gap assessment behavior will be implemented in `#3`.
+- `map-tests` must be completed for the same PR.
+- The current PR intake, change analysis, and test map must all be in the database.
 
-## Intended outputs
+## 実行手順
 
-- coverage gap map
-- prioritized risk list
-- selected exploratory frameworks
+1. Run `bun run dev assess-gaps --pr <number> --provider github --repository owner/repo`.
+2. Review the risk scores, selected frameworks, and exploration themes.
+3. Read `.exploratory-testing/progress/05-assess-gaps.md` for the handover summary.
 
-## Intended CLI boundary
+## 再開方法
 
-- `exploratory-testing assess-gaps`
+- If the risk picture changes, rerun this step before generating charters.
+- Keep exploration themes short and specific so each charter remains one theme.
+
+## 次の Step
+
+- `generate-charters`

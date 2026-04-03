@@ -122,6 +122,64 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS session_charters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  risk_assessment_id INTEGER NOT NULL UNIQUE
+    REFERENCES risk_assessments(id)
+    ON DELETE CASCADE,
+  charters_json TEXT NOT NULL DEFAULT '[]',
+  generated_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_charters_id INTEGER NOT NULL
+    REFERENCES session_charters(id)
+    ON DELETE CASCADE,
+  charter_index INTEGER NOT NULL,
+  charter_title TEXT NOT NULL,
+  status TEXT NOT NULL
+    CHECK (status IN (
+      'planned',
+      'in_progress',
+      'interrupted',
+      'completed'
+    )),
+  started_at TEXT,
+  interrupted_at TEXT,
+  completed_at TEXT,
+  interrupt_reason TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (session_charters_id, charter_index)
+);
+
+CREATE TABLE IF NOT EXISTS observations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL
+    REFERENCES sessions(id)
+    ON DELETE CASCADE,
+  observation_order INTEGER NOT NULL,
+  targeted_heuristic TEXT NOT NULL,
+  action TEXT NOT NULL,
+  expected TEXT NOT NULL,
+  actual TEXT NOT NULL,
+  outcome TEXT NOT NULL
+    CHECK (outcome IN ('pass', 'fail', 'unclear', 'suspicious')),
+  note TEXT NOT NULL DEFAULT '',
+  evidence_path TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (session_id, observation_order)
+);
+
 CREATE INDEX IF NOT EXISTS idx_pr_intakes_lookup
   ON pr_intakes(provider, repository, pr_number);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_status
+  ON sessions(status);
+
+CREATE INDEX IF NOT EXISTS idx_observations_session_id
+  ON observations(session_id);
 `;

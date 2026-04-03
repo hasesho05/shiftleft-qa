@@ -28,6 +28,17 @@ import {
   riskScoreSchema,
 } from "../models/risk-assessment";
 import {
+  type Observation,
+  type SessionStatus,
+  observationOutcomeSchema,
+  sessionStatusSchema,
+} from "../models/session";
+import {
+  type SessionCharter,
+  type SessionCharterGenerationResult,
+  sessionCharterSchema,
+} from "../models/session-charter";
+import {
   type TestMappingResult,
   coverageGapEntrySchema,
   testAssetSchema,
@@ -939,5 +950,488 @@ function mapRiskAssessmentRow(row: RiskAssessmentRow): PersistedRiskAssessment {
     assessedAt: row.assessed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Session Charters
+// ---------------------------------------------------------------------------
+
+export type PersistedSessionCharters = {
+  readonly id: number;
+  readonly riskAssessmentId: number;
+  readonly charters: readonly SessionCharter[];
+  readonly generatedAt: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type SessionChartersRow = {
+  readonly id: number;
+  readonly risk_assessment_id: number;
+  readonly charters_json: string;
+  readonly generated_at: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export function saveSessionCharters(
+  databasePath: string,
+  result: SessionCharterGenerationResult,
+): PersistedSessionCharters {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO session_charters (
+            risk_assessment_id, charters_json, generated_at,
+            created_at, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5)
+          ON CONFLICT(risk_assessment_id) DO UPDATE SET
+            charters_json = excluded.charters_json,
+            generated_at = excluded.generated_at,
+            updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          result.riskAssessmentId,
+          JSON.stringify(result.charters),
+          result.generatedAt,
+          timestamp,
+          timestamp,
+        );
+
+      return database
+        .query(
+          `
+          SELECT * FROM session_charters
+          WHERE risk_assessment_id = ?1
+          `,
+        )
+        .get<SessionChartersRow>(result.riskAssessmentId);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist session charters for risk_assessment_id=${result.riskAssessmentId}`,
+      );
+    }
+
+    return mapSessionChartersRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function findSessionCharters(
+  databasePath: string,
+  riskAssessmentId: number,
+): PersistedSessionCharters | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query(
+        `
+        SELECT * FROM session_charters
+        WHERE risk_assessment_id = ?1
+        `,
+      )
+      .get<SessionChartersRow>(riskAssessmentId);
+
+    return row ? mapSessionChartersRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+export function findSessionChartersById(
+  databasePath: string,
+  id: number,
+): PersistedSessionCharters | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM session_charters WHERE id = ?1")
+      .get<SessionChartersRow>(id);
+
+    return row ? mapSessionChartersRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+function mapSessionChartersRow(
+  row: SessionChartersRow,
+): PersistedSessionCharters {
+  return {
+    id: row.id,
+    riskAssessmentId: row.risk_assessment_id,
+    charters: z
+      .array(sessionCharterSchema)
+      .parse(JSON.parse(row.charters_json)),
+    generatedAt: row.generated_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+export type PersistedSession = {
+  readonly id: number;
+  readonly sessionChartersId: number;
+  readonly charterIndex: number;
+  readonly charterTitle: string;
+  readonly status: SessionStatus;
+  readonly startedAt: string | null;
+  readonly interruptedAt: string | null;
+  readonly completedAt: string | null;
+  readonly interruptReason: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type SessionRow = {
+  readonly id: number;
+  readonly session_charters_id: number;
+  readonly charter_index: number;
+  readonly charter_title: string;
+  readonly status: string;
+  readonly started_at: string | null;
+  readonly interrupted_at: string | null;
+  readonly completed_at: string | null;
+  readonly interrupt_reason: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export type SaveSessionInput = {
+  readonly sessionChartersId: number;
+  readonly charterIndex: number;
+  readonly charterTitle: string;
+};
+
+export function saveSession(
+  databasePath: string,
+  input: SaveSessionInput,
+): PersistedSession {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO sessions (
+            session_charters_id, charter_index, charter_title,
+            status, started_at, interrupted_at, completed_at,
+            interrupt_reason, created_at, updated_at
+          ) VALUES (?1, ?2, ?3, 'planned', NULL, NULL, NULL, NULL, ?4, ?5)
+          ON CONFLICT(session_charters_id, charter_index) DO UPDATE SET
+            charter_title = excluded.charter_title,
+            updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          input.sessionChartersId,
+          input.charterIndex,
+          input.charterTitle,
+          timestamp,
+          timestamp,
+        );
+
+      return database
+        .query(
+          `
+          SELECT * FROM sessions
+          WHERE session_charters_id = ?1 AND charter_index = ?2
+          `,
+        )
+        .get<SessionRow>(input.sessionChartersId, input.charterIndex);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist session for session_charters_id=${input.sessionChartersId}, charter_index=${input.charterIndex}`,
+      );
+    }
+
+    return mapSessionRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export type UpdateSessionStatusInput = {
+  readonly sessionId: number;
+  readonly status: SessionStatus;
+  readonly startedAt?: string;
+  readonly interruptedAt?: string | null;
+  readonly completedAt?: string | null;
+  readonly interruptReason?: string | null;
+};
+
+export function updateSessionStatus(
+  databasePath: string,
+  input: UpdateSessionStatusInput,
+): PersistedSession {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          UPDATE sessions SET
+            status = ?2,
+            started_at = CASE WHEN ?3 IS NOT NULL THEN ?3 ELSE started_at END,
+            interrupted_at = ?4,
+            completed_at = ?5,
+            interrupt_reason = ?6,
+            updated_at = ?7
+          WHERE id = ?1
+          `,
+        )
+        .run(
+          input.sessionId,
+          input.status,
+          input.startedAt ?? null,
+          input.interruptedAt ?? null,
+          input.completedAt ?? null,
+          input.interruptReason ?? null,
+          timestamp,
+        );
+
+      return database
+        .query("SELECT * FROM sessions WHERE id = ?1")
+        .get<SessionRow>(input.sessionId);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(`Session not found: id=${input.sessionId}`);
+    }
+
+    return mapSessionRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function findSession(
+  databasePath: string,
+  sessionId: number,
+): PersistedSession | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM sessions WHERE id = ?1")
+      .get<SessionRow>(sessionId);
+
+    return row ? mapSessionRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+export function listSessionsByChartersId(
+  databasePath: string,
+  sessionChartersId: number,
+): readonly PersistedSession[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query(
+        `
+        SELECT * FROM sessions
+        WHERE session_charters_id = ?1
+        ORDER BY charter_index
+        `,
+      )
+      .all<SessionRow>(sessionChartersId);
+
+    return rows.map(mapSessionRow);
+  } finally {
+    database.close();
+  }
+}
+
+function mapSessionRow(row: SessionRow): PersistedSession {
+  return {
+    id: row.id,
+    sessionChartersId: row.session_charters_id,
+    charterIndex: row.charter_index,
+    charterTitle: row.charter_title,
+    status: sessionStatusSchema.parse(row.status),
+    startedAt: row.started_at,
+    interruptedAt: row.interrupted_at,
+    completedAt: row.completed_at,
+    interruptReason: row.interrupt_reason,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Observations
+// ---------------------------------------------------------------------------
+
+export type PersistedObservation = {
+  readonly id: number;
+  readonly sessionId: number;
+  readonly observationOrder: number;
+  readonly targetedHeuristic: string;
+  readonly action: string;
+  readonly expected: string;
+  readonly actual: string;
+  readonly outcome: Observation["outcome"];
+  readonly note: string;
+  readonly evidencePath: string | null;
+  readonly createdAt: string;
+};
+
+type ObservationRow = {
+  readonly id: number;
+  readonly session_id: number;
+  readonly observation_order: number;
+  readonly targeted_heuristic: string;
+  readonly action: string;
+  readonly expected: string;
+  readonly actual: string;
+  readonly outcome: string;
+  readonly note: string;
+  readonly evidence_path: string | null;
+  readonly created_at: string;
+};
+
+export type SaveObservationInput = {
+  readonly sessionId: number;
+  readonly targetedHeuristic: string;
+  readonly action: string;
+  readonly expected: string;
+  readonly actual: string;
+  readonly outcome: Observation["outcome"];
+  readonly note: string;
+  readonly evidencePath: string | null;
+};
+
+export function saveObservation(
+  databasePath: string,
+  input: SaveObservationInput,
+): PersistedObservation {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      const nextOrder =
+        database
+          .query(
+            "SELECT COALESCE(MAX(observation_order), 0) AS max_order FROM observations WHERE session_id = ?1",
+          )
+          .get<{ readonly max_order: number }>(input.sessionId)?.max_order ?? 0;
+
+      const observationOrder = nextOrder + 1;
+
+      database
+        .query(
+          `
+          INSERT INTO observations (
+            session_id, observation_order,
+            targeted_heuristic, action, expected, actual,
+            outcome, note, evidence_path, created_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+          `,
+        )
+        .run(
+          input.sessionId,
+          observationOrder,
+          input.targetedHeuristic,
+          input.action,
+          input.expected,
+          input.actual,
+          input.outcome,
+          input.note,
+          input.evidencePath,
+          timestamp,
+        );
+
+      return database
+        .query(
+          `
+          SELECT * FROM observations
+          WHERE session_id = ?1 AND observation_order = ?2
+          `,
+        )
+        .get<ObservationRow>(input.sessionId, observationOrder);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist observation for session_id=${input.sessionId}`,
+      );
+    }
+
+    return mapObservationRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function listObservations(
+  databasePath: string,
+  sessionId: number,
+): readonly PersistedObservation[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query(
+        `
+        SELECT * FROM observations
+        WHERE session_id = ?1
+        ORDER BY observation_order
+        `,
+      )
+      .all<ObservationRow>(sessionId);
+
+    return rows.map(mapObservationRow);
+  } finally {
+    database.close();
+  }
+}
+
+function mapObservationRow(row: ObservationRow): PersistedObservation {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    observationOrder: row.observation_order,
+    targetedHeuristic: row.targeted_heuristic,
+    action: row.action,
+    expected: row.expected,
+    actual: row.actual,
+    outcome: observationOutcomeSchema.parse(row.outcome),
+    note: row.note,
+    evidencePath: row.evidence_path,
+    createdAt: row.created_at,
   };
 }

@@ -10,6 +10,7 @@ import {
   findTestMapping,
   saveRiskAssessment,
 } from "../db/workspace-repository";
+import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
 import type { RiskAssessmentResult } from "../models/risk-assessment";
 import { readPluginConfig } from "./config";
@@ -177,8 +178,4 @@ function buildHandoverBody(assessment: PersistedRiskAssessment): string {
   lines.push("## Next step", "", "- generate-charters", "");
 
   return lines.join("\n");
-}
-
-function escapePipe(text: string): string {
-  return text.replace(/\|/g, "\\|");
 }

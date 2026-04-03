@@ -6,6 +6,7 @@ import {
   listFindingsByType,
   saveFinding,
 } from "../db/workspace-repository";
+import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
 import type {
   FindingSeverity,
@@ -302,8 +303,4 @@ function buildTriageHandoverBody(
   lines.push("## Next step", "", "- export-artifacts", "");
 
   return lines.join("\n");
-}
-
-function escapePipe(text: string): string {
-  return text.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
 }

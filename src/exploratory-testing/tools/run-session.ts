@@ -9,6 +9,7 @@ import {
   saveSession,
   updateSessionStatus,
 } from "../db/workspace-repository";
+import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
 import type { ObservationOutcome } from "../models/session";
 import {
@@ -334,8 +335,4 @@ function countOutcomes(observations: readonly PersistedObservation[]): {
   }
 
   return { pass, fail, unclear, suspicious };
-}
-
-function escapePipe(text: string): string {
-  return text.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
 }

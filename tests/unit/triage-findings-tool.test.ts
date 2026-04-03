@@ -180,6 +180,56 @@ describe("triage-findings tool", () => {
     ).rejects.toThrow(/belongs to session/);
   });
 
+  it("rejects automation-candidate without recommendedTestLayer", async () => {
+    const workspace = await setupWorkspace();
+    const { sessionId, observationId } = seedSessionWithObservation(
+      workspace.databasePath,
+    );
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    await expect(
+      addFinding({
+        sessionId,
+        observationId,
+        type: "automation-candidate",
+        title: "Missing layer",
+        description: "No test layer specified",
+        severity: "medium",
+        recommendedTestLayer: null,
+        automationRationale: "Some rationale",
+        config,
+      }),
+    ).rejects.toThrow(/recommendedTestLayer is required/);
+  });
+
+  it("rejects automation-candidate without automationRationale", async () => {
+    const workspace = await setupWorkspace();
+    const { sessionId, observationId } = seedSessionWithObservation(
+      workspace.databasePath,
+    );
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    await expect(
+      addFinding({
+        sessionId,
+        observationId,
+        type: "automation-candidate",
+        title: "Missing rationale",
+        description: "No rationale specified",
+        severity: "medium",
+        recommendedTestLayer: "unit",
+        automationRationale: null,
+        config,
+      }),
+    ).rejects.toThrow(/automationRationale is required/);
+  });
+
   it("generates a triage report for a session", async () => {
     const workspace = await setupWorkspace();
     const { sessionId, observationId } = seedSessionWithObservation(
@@ -292,6 +342,30 @@ describe("triage-findings tool", () => {
     expect(report.candidates).toHaveLength(2);
     expect(report.countByLayer.unit).toBe(1);
     expect(report.countByLayer.e2e).toBe(1);
+  });
+
+  it("triage report rejects non-existent session", async () => {
+    const workspace = await setupWorkspace();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    await expect(
+      generateTriageReport({ sessionId: 999, config }),
+    ).rejects.toThrow(/Session not found/);
+  });
+
+  it("automation report rejects non-existent session", async () => {
+    const workspace = await setupWorkspace();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    await expect(
+      generateAutomationReport({ sessionId: 999, config }),
+    ).rejects.toThrow(/Session not found/);
   });
 
   it("triage report returns zeros when no findings", async () => {

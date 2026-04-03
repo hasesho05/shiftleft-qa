@@ -27,15 +27,36 @@ export const findingSeveritySchema = z.enum([
 
 export type FindingSeverity = z.infer<typeof findingSeveritySchema>;
 
-export const findingSchema = z.object({
-  sessionId: z.number().int().positive(),
-  observationId: z.number().int().positive(),
-  type: findingTypeSchema,
-  title: z.string().min(1),
-  description: z.string().min(1),
-  severity: findingSeveritySchema,
-  recommendedTestLayer: recommendedTestLayerSchema.nullable(),
-  automationRationale: z.string().min(1).nullable(),
-});
+export const findingSchema = z
+  .object({
+    sessionId: z.number().int().positive(),
+    observationId: z.number().int().positive(),
+    type: findingTypeSchema,
+    title: z.string().min(1),
+    description: z.string().min(1),
+    severity: findingSeveritySchema,
+    recommendedTestLayer: recommendedTestLayerSchema.nullable(),
+    automationRationale: z.string().min(1).nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "automation-candidate") {
+      if (data.recommendedTestLayer === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["recommendedTestLayer"],
+          message:
+            "recommendedTestLayer is required for automation-candidate findings",
+        });
+      }
+      if (data.automationRationale === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["automationRationale"],
+          message:
+            "automationRationale is required for automation-candidate findings",
+        });
+      }
+    }
+  });
 
 export type Finding = z.infer<typeof findingSchema>;

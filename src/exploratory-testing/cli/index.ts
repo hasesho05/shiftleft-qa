@@ -538,12 +538,27 @@ cli
       );
     }
 
+    const parsedType = findingTypeSchema.parse(options.type);
+
+    if (parsedType === "automation-candidate") {
+      if (!options.testLayer) {
+        throw new Error(
+          "The --test-layer option is required for automation-candidate findings.",
+        );
+      }
+      if (!options.rationale) {
+        throw new Error(
+          "The --rationale option is required for automation-candidate findings.",
+        );
+      }
+    }
+
     const config = await readPluginConfig(options.config, options.manifest);
 
     const result = await addFinding({
       sessionId: options.session,
       observationId: options.observation,
-      type: findingTypeSchema.parse(options.type),
+      type: parsedType,
       title: options.title,
       description: options.description,
       severity: findingSeveritySchema.parse(options.severity),

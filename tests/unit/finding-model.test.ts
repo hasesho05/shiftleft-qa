@@ -142,6 +142,62 @@ describe("finding model schemas", () => {
       expect(() => findingSchema.parse(finding)).toThrow();
     });
 
+    it("rejects automation-candidate without recommendedTestLayer", () => {
+      const finding = {
+        sessionId: 1,
+        observationId: 4,
+        type: "automation-candidate" as const,
+        title: "Boundary value validation",
+        description: "Should be automated",
+        severity: "medium" as const,
+        recommendedTestLayer: null,
+        automationRationale: "Some rationale",
+      };
+      expect(() => findingSchema.parse(finding)).toThrow();
+    });
+
+    it("rejects automation-candidate without automationRationale", () => {
+      const finding = {
+        sessionId: 1,
+        observationId: 4,
+        type: "automation-candidate" as const,
+        title: "Boundary value validation",
+        description: "Should be automated",
+        severity: "medium" as const,
+        recommendedTestLayer: "unit" as const,
+        automationRationale: null,
+      };
+      expect(() => findingSchema.parse(finding)).toThrow();
+    });
+
+    it("allows null recommendedTestLayer for defect", () => {
+      const finding = {
+        sessionId: 1,
+        observationId: 2,
+        type: "defect" as const,
+        title: "A bug",
+        description: "Details",
+        severity: "high" as const,
+        recommendedTestLayer: null,
+        automationRationale: null,
+      };
+      expect(findingSchema.parse(finding)).toEqual(finding);
+    });
+
+    it("allows null recommendedTestLayer for spec-gap", () => {
+      const finding = {
+        sessionId: 1,
+        observationId: 2,
+        type: "spec-gap" as const,
+        title: "A gap",
+        description: "Details",
+        severity: "medium" as const,
+        recommendedTestLayer: null,
+        automationRationale: null,
+      };
+      expect(findingSchema.parse(finding)).toEqual(finding);
+    });
+
     it("accepts all severity levels", () => {
       for (const severity of ["low", "medium", "high", "critical"]) {
         const finding = {

@@ -57,6 +57,19 @@ export async function addFinding(
     );
   }
 
+  if (input.type === "automation-candidate") {
+    if (!input.recommendedTestLayer) {
+      throw new Error(
+        "recommendedTestLayer is required for automation-candidate findings",
+      );
+    }
+    if (!input.automationRationale) {
+      throw new Error(
+        "automationRationale is required for automation-candidate findings",
+      );
+    }
+  }
+
   const finding = saveFinding(databasePath, {
     sessionId: input.sessionId,
     observationId: input.observationId,
@@ -92,6 +105,12 @@ export async function generateTriageReport(
   input: GenerateTriageReportInput,
 ): Promise<TriageReport> {
   const databasePath = input.config.paths.database;
+
+  const session = findSession(databasePath, input.sessionId);
+  if (!session) {
+    throw new Error(`Session not found: id=${input.sessionId}`);
+  }
+
   const findings = listFindings(databasePath, input.sessionId);
 
   const countByType: Record<FindingType, number> = {
@@ -141,6 +160,12 @@ export async function generateAutomationReport(
   input: GenerateAutomationReportInput,
 ): Promise<AutomationReport> {
   const databasePath = input.config.paths.database;
+
+  const session = findSession(databasePath, input.sessionId);
+  if (!session) {
+    throw new Error(`Session not found: id=${input.sessionId}`);
+  }
+
   const candidates = listFindingsByType(
     databasePath,
     input.sessionId,

@@ -1,5 +1,6 @@
 import { execa } from "execa";
 
+import { normalizeExecaError } from "../lib/execa-error";
 import type { PrMetadata } from "../models/pr-intake";
 import {
   buildPrMetadata,
@@ -80,45 +81,5 @@ export function normalizeGhCommandError(
     readonly timeoutMs: number;
   },
 ): string {
-  if (error && typeof error === "object") {
-    const record = error as {
-      shortMessage?: unknown;
-      stderr?: unknown;
-      message?: unknown;
-      timedOut?: unknown;
-      exitCode?: unknown;
-    };
-
-    const detail = [record.shortMessage, record.stderr, record.message].find(
-      (candidate): candidate is string =>
-        typeof candidate === "string" && candidate.trim().length > 0,
-    );
-
-    if (context) {
-      const prefix = `gh ${context.args.join(" ")}`.trim();
-      const suffixParts = [`cwd=${context.cwd}`];
-
-      if (record.timedOut === true) {
-        suffixParts.push(`timed out after ${context.timeoutMs}ms`);
-      } else if (typeof record.exitCode === "number") {
-        suffixParts.push(`exit code ${record.exitCode}`);
-      }
-
-      if (detail) {
-        suffixParts.push(detail.trim());
-      }
-
-      return `${prefix} の実行に失敗しました (${suffixParts.join("; ")})`;
-    }
-
-    if (detail) {
-      return detail.trim();
-    }
-  }
-
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return "gh コマンドの実行に失敗しました";
+  return normalizeExecaError(error, { command: "gh", ...context }, "gh コマンドの実行に失敗しました");
 }

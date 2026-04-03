@@ -11,19 +11,19 @@ description: 現在のリスク状況から、小さく具体的な exploratory 
 
 ## 前提条件
 
-- `assess-gaps` must be completed.
-- Risk themes and coverage gaps must be present in the database.
+- `assess-gaps` が完了していること。
+- risk themes と coverage gaps が database に存在していること。
 
 ## 実行手順
 
-1. Run `bun run dev generate-charters --pr <number> --provider github --repository owner/repo`.
-2. Review each charter for scope, frameworks, preconditions, observation targets, stop conditions, and timebox.
-3. Read `.exploratory-testing/progress/06-generate-charters.md` for the handover summary.
+1. `bun run dev generate-charters --pr <number> --provider github --repository owner/repo` を実行する。
+2. 各 charter の scope、frameworks、preconditions、observation targets、stop conditions、timebox を確認する。
+3. handover summary は `.exploratory-testing/progress/06-generate-charters.md` を読む。
 
 ## 再開方法
 
-- If the risk assessment changes, rerun this step before starting sessions.
-- Keep one charter focused on one theme; do not widen scope to fit extra checks.
+- risk assessment が変わった場合は、session 開始前にこの step を再実行する。
+- 1 charter は 1 theme に集中させ、追加確認のために scope を広げすぎない。
 
 ## 次の Step
 

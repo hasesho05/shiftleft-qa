@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 
 import { cac } from "cac";
 
+import { normalizeExecaError } from "../lib/execa-error";
 import {
   findingSeveritySchema,
   findingTypeSchema,
@@ -128,49 +129,7 @@ export function formatErrorEnvelope(error: unknown): JsonErrorEnvelope {
 }
 
 export function normalizeCliErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  if (typeof error === "string" && error.trim().length > 0) {
-    return error;
-  }
-
-  if (error && typeof error === "object") {
-    const errorRecord = error as {
-      shortMessage?: unknown;
-      stderr?: unknown;
-      message?: unknown;
-      command?: unknown;
-      exitCode?: unknown;
-      timedOut?: unknown;
-    };
-
-    for (const candidate of [
-      errorRecord.shortMessage,
-      errorRecord.stderr,
-      errorRecord.message,
-    ]) {
-      if (typeof candidate === "string" && candidate.trim().length > 0) {
-        return candidate.trim();
-      }
-    }
-
-    if (typeof errorRecord.command === "string") {
-      const parts = [`コマンド実行に失敗しました: ${errorRecord.command}`];
-
-      if (typeof errorRecord.exitCode === "number") {
-        parts.push(`終了コード ${errorRecord.exitCode}`);
-      }
-      if (errorRecord.timedOut === true) {
-        parts.push("タイムアウトしました");
-      }
-
-      return parts.join(" - ");
-    }
-  }
-
-  return "不明なエラーです";
+  return normalizeExecaError(error, undefined, "不明なエラーです");
 }
 
 function emitJsonEnvelope<T>(envelope: JsonEnvelope<T>): void {
@@ -198,10 +157,6 @@ cli.command("doctor", "ローカル開発環境を確認する").action(
     const hasMissingRequiredTool = report.tools.some(
       (tool) => tool.required && !tool.detected,
     );
-
-    if (hasMissingRequiredTool) {
-      process.exitCode = 1;
-    }
 
     return {
       ...report,

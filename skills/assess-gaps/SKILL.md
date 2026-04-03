@@ -11,19 +11,19 @@ change analysis と test map から優先度付きの探索テーマを作る。
 
 ## 前提条件
 
-- `map-tests` must be completed for the same PR.
-- The current PR intake, change analysis, and test map must all be in the database.
+- 同じ PR に対して `map-tests` が完了していること。
+- 現在の PR intake、change analysis、test map が database に存在していること。
 
 ## 実行手順
 
-1. Run `bun run dev assess-gaps --pr <number> --provider github --repository owner/repo`.
-2. Review the risk scores, selected frameworks, and exploration themes.
-3. Read `.exploratory-testing/progress/05-assess-gaps.md` for the handover summary.
+1. `bun run dev assess-gaps --pr <number> --provider github --repository owner/repo` を実行する。
+2. 生成された risk scores、selected frameworks、exploration themes を確認する。
+3. handover summary は `.exploratory-testing/progress/05-assess-gaps.md` を読む。
 
 ## 再開方法
 
-- If the risk picture changes, rerun this step before generating charters.
-- Keep exploration themes short and specific so each charter remains one theme.
+- リスク状況が変わったら、charter 生成前にこの step を再実行する。
+- 各 exploration theme は短く具体的に保ち、1 charter 1 theme を崩さない。
 
 ## 次の Step
 

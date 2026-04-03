@@ -19,7 +19,7 @@ describe("SCM command error normalization", () => {
     );
 
     expect(message).toContain("git remote get-url origin の実行に失敗しました");
-    expect(message).toContain("timed out after 30000ms");
+    expect(message).toContain("30000ms でタイムアウトしました");
   });
 
   it("includes gh context and exit code information", () => {
@@ -36,7 +36,7 @@ describe("SCM command error normalization", () => {
     );
 
     expect(message).toContain("gh pr view 42 の実行に失敗しました");
-    expect(message).toContain("exit code 1");
+    expect(message).toContain("終了コード 1");
     expect(message).toContain("Not a git repository");
   });
 });

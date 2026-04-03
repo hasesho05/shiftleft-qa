@@ -1,5 +1,6 @@
 import { execa } from "execa";
 
+import { normalizeExecaError } from "../lib/execa-error";
 import type { PrMetadata } from "../models/pr-intake";
 import type { ResolvedScmProvider } from "./detect-provider";
 import { resolveScmProvider } from "./detect-provider";
@@ -84,51 +85,9 @@ export function normalizeExternalCommandError(
     readonly timeoutMs: number;
   },
 ): string {
-  if (error && typeof error === "object") {
-    const record = error as {
-      shortMessage?: unknown;
-      stderr?: unknown;
-      message?: unknown;
-      timedOut?: unknown;
-      command?: unknown;
-      exitCode?: unknown;
-    };
-
-    const messageCandidates = [
-      record.shortMessage,
-      record.stderr,
-      record.message,
-    ];
-    const detail = messageCandidates.find(
-      (candidate): candidate is string =>
-        typeof candidate === "string" && candidate.trim().length > 0,
-    );
-
-    if (context) {
-      const prefix = `${context.command} ${context.args.join(" ")}`.trim();
-      const suffixParts = [`cwd=${context.cwd}`];
-
-      if (record.timedOut === true) {
-        suffixParts.push(`timed out after ${context.timeoutMs}ms`);
-      } else if (typeof record.exitCode === "number") {
-        suffixParts.push(`exit code ${record.exitCode}`);
-      }
-
-      if (detail) {
-        suffixParts.push(detail.trim());
-      }
-
-      return `${prefix} の実行に失敗しました (${suffixParts.join("; ")})`;
-    }
-
-    if (detail) {
-      return detail.trim();
-    }
-  }
-
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-
-  return "外部コマンドの実行に失敗しました";
+  return normalizeExecaError(
+    error,
+    context,
+    "外部コマンドの実行に失敗しました",
+  );
 }

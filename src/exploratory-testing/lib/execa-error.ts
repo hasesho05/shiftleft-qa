@@ -74,10 +74,7 @@ export function getPreferredErrorMessage(error: unknown): string | null {
   }
 
   return (
-    execaError.shortMessage ??
-    execaError.stderr ??
-    execaError.message ??
-    null
+    execaError.shortMessage ?? execaError.stderr ?? execaError.message ?? null
   );
 }
 

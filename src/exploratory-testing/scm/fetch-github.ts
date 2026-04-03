@@ -81,5 +81,9 @@ export function normalizeGhCommandError(
     readonly timeoutMs: number;
   },
 ): string {
-  return normalizeExecaError(error, { command: "gh", ...context }, "gh コマンドの実行に失敗しました");
+  return normalizeExecaError(
+    error,
+    { command: "gh", ...context },
+    "gh コマンドの実行に失敗しました",
+  );
 }

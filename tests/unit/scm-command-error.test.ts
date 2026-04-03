@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeExternalCommandError } from "../../src/exploratory-testing/scm/fetch-pr";
 import { normalizeGhCommandError } from "../../src/exploratory-testing/scm/fetch-github";
+import { normalizeExternalCommandError } from "../../src/exploratory-testing/scm/fetch-pr";
 
 describe("SCM command error normalization", () => {
   it("includes git context and timeout information", () => {

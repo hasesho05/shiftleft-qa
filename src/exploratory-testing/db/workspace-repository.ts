@@ -12,6 +12,15 @@ import {
   viewpointSeedSchema,
 } from "../models/change-analysis";
 import {
+  type Finding,
+  type FindingSeverity,
+  type FindingType,
+  type RecommendedTestLayer,
+  findingSeveritySchema,
+  findingTypeSchema,
+  recommendedTestLayerSchema,
+} from "../models/finding";
+import {
   type PrMetadata,
   changedFileSchema,
   reviewCommentSchema,
@@ -1420,6 +1429,23 @@ export function listObservations(
   }
 }
 
+export function findObservation(
+  databasePath: string,
+  observationId: number,
+): PersistedObservation | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM observations WHERE id = ?1")
+      .get<ObservationRow>(observationId);
+
+    return row ? mapObservationRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
 function mapObservationRow(row: ObservationRow): PersistedObservation {
   return {
     id: row.id,
@@ -1433,5 +1459,175 @@ function mapObservationRow(row: ObservationRow): PersistedObservation {
     note: row.note,
     evidencePath: row.evidence_path,
     createdAt: row.created_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Findings
+// ---------------------------------------------------------------------------
+
+export type PersistedFinding = {
+  readonly id: number;
+  readonly sessionId: number;
+  readonly observationId: number;
+  readonly type: FindingType;
+  readonly title: string;
+  readonly description: string;
+  readonly severity: FindingSeverity;
+  readonly recommendedTestLayer: RecommendedTestLayer | null;
+  readonly automationRationale: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type FindingRow = {
+  readonly id: number;
+  readonly session_id: number;
+  readonly observation_id: number;
+  readonly type: string;
+  readonly title: string;
+  readonly description: string;
+  readonly severity: string;
+  readonly recommended_test_layer: string | null;
+  readonly automation_rationale: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export type SaveFindingInput = {
+  readonly sessionId: number;
+  readonly observationId: number;
+  readonly type: FindingType;
+  readonly title: string;
+  readonly description: string;
+  readonly severity: FindingSeverity;
+  readonly recommendedTestLayer: RecommendedTestLayer | null;
+  readonly automationRationale: string | null;
+};
+
+export function saveFinding(
+  databasePath: string,
+  input: SaveFindingInput,
+): PersistedFinding {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO findings (
+            session_id, observation_id, type, title, description,
+            severity, recommended_test_layer, automation_rationale,
+            created_at, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+          `,
+        )
+        .run(
+          input.sessionId,
+          input.observationId,
+          input.type,
+          input.title,
+          input.description,
+          input.severity,
+          input.recommendedTestLayer,
+          input.automationRationale,
+          timestamp,
+          timestamp,
+        );
+
+      return database
+        .query(
+          `
+          SELECT * FROM findings
+          WHERE session_id = ?1 AND observation_id = ?2 AND type = ?3 AND created_at = ?4
+          ORDER BY id DESC LIMIT 1
+          `,
+        )
+        .get<FindingRow>(
+          input.sessionId,
+          input.observationId,
+          input.type,
+          timestamp,
+        );
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist finding for session_id=${input.sessionId}, observation_id=${input.observationId}`,
+      );
+    }
+
+    return mapFindingRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function listFindings(
+  databasePath: string,
+  sessionId: number,
+): readonly PersistedFinding[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query(
+        `
+        SELECT * FROM findings
+        WHERE session_id = ?1
+        ORDER BY id
+        `,
+      )
+      .all<FindingRow>(sessionId);
+
+    return rows.map(mapFindingRow);
+  } finally {
+    database.close();
+  }
+}
+
+export function listFindingsByType(
+  databasePath: string,
+  sessionId: number,
+  type: FindingType,
+): readonly PersistedFinding[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query(
+        `
+        SELECT * FROM findings
+        WHERE session_id = ?1 AND type = ?2
+        ORDER BY id
+        `,
+      )
+      .all<FindingRow>(sessionId, type);
+
+    return rows.map(mapFindingRow);
+  } finally {
+    database.close();
+  }
+}
+
+function mapFindingRow(row: FindingRow): PersistedFinding {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    observationId: row.observation_id,
+    type: findingTypeSchema.parse(row.type),
+    title: row.title,
+    description: row.description,
+    severity: findingSeveritySchema.parse(row.severity),
+    recommendedTestLayer: row.recommended_test_layer
+      ? recommendedTestLayerSchema.parse(row.recommended_test_layer)
+      : null,
+    automationRationale: row.automation_rationale,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }

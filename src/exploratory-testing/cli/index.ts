@@ -13,6 +13,7 @@ import { runAssessGaps } from "../tools/assess-gaps";
 import { readPluginConfig } from "../tools/config";
 import { runDiscoverContext } from "../tools/discover-context";
 import { createEnvironmentReport, getToolStatus } from "../tools/doctor";
+import { exportArtifacts } from "../tools/export-artifacts";
 import { runGenerateCharters } from "../tools/generate-charters";
 import { readPluginManifest } from "../tools/manifest";
 import { runMapTests } from "../tools/map-tests";
@@ -84,6 +85,10 @@ type FindingAddCommandOptions = WorkspaceCommandOptions & {
 
 type FindingReportCommandOptions = WorkspaceCommandOptions & {
   readonly session?: number;
+};
+
+type ExportArtifactsCommandOptions = WorkspaceCommandOptions & {
+  readonly prIntakeId?: number;
 };
 
 type HandoverCommandOptions = WorkspaceCommandOptions & {
@@ -666,6 +671,33 @@ cli
       sessionId: result.triageReport.sessionId,
       totalFindings: result.triageReport.totalFindings,
       totalAutomationCandidates: result.automationReport.totalCandidates,
+      handoverPath: result.handover.filePath,
+    });
+  });
+
+cli
+  .command(
+    "export-artifacts",
+    "Export final artifacts (brief, gap map, charters, findings, automation candidates)",
+  )
+  .option("--config <configPath>", "Path to config.json")
+  .option("--manifest <manifestPath>", "Path to plugin.json")
+  .option("--pr-intake-id <prIntakeId>", "PR intake record ID")
+  .action(async (options: ExportArtifactsCommandOptions) => {
+    if (!options.prIntakeId) {
+      throw new Error("The --pr-intake-id option is required.");
+    }
+
+    const config = await readPluginConfig(options.config, options.manifest);
+
+    const result = await exportArtifacts({
+      prIntakeId: options.prIntakeId,
+      config,
+    });
+
+    emitJson({
+      prIntakeId: options.prIntakeId,
+      artifacts: result.artifacts,
       handoverPath: result.handover.filePath,
     });
   });

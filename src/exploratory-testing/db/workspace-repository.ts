@@ -531,6 +531,23 @@ export function findPrIntake(
   }
 }
 
+export function findPrIntakeById(
+  databasePath: string,
+  id: number,
+): PersistedPrIntake | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM pr_intakes WHERE id = ?1")
+      .get<PrIntakeRow>(id);
+
+    return row ? mapPrIntakeRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
 export function listPrIntakes(
   databasePath: string,
 ): readonly PersistedPrIntake[] {
@@ -1298,6 +1315,22 @@ export function listSessionsByChartersId(
   }
 }
 
+export function listAllSessions(
+  databasePath: string,
+): readonly PersistedSession[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query("SELECT * FROM sessions ORDER BY id")
+      .all<SessionRow>();
+
+    return rows.map(mapSessionRow);
+  } finally {
+    database.close();
+  }
+}
+
 function mapSessionRow(row: SessionRow): PersistedSession {
   return {
     id: row.id,
@@ -1623,6 +1656,22 @@ export function listFindingsByType(
         `,
       )
       .all<FindingRow>(sessionId, type);
+
+    return rows.map(mapFindingRow);
+  } finally {
+    database.close();
+  }
+}
+
+export function listAllFindings(
+  databasePath: string,
+): readonly PersistedFinding[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query("SELECT * FROM findings ORDER BY id")
+      .all<FindingRow>();
 
     return rows.map(mapFindingRow);
   } finally {

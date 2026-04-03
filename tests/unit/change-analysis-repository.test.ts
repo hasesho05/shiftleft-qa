@@ -159,7 +159,7 @@ describe("change analysis repository", () => {
     expect(found?.summary).toBe("Updated analysis");
   });
 
-  it("round-trips JSON columns through Zod validation", async () => {
+  it("round-trips JSON columns through Valibot validation", async () => {
     const { databasePath } = await setupWorkspace();
     const prIntake = savePrIntake(databasePath, createSamplePrMetadata());
     const analysis = createSampleAnalysis(prIntake.id);

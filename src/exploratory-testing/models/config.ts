@@ -1,33 +1,46 @@
-import { z } from "zod";
+import { nonEmptyString, schema, v } from "../lib/validation";
 
-export const scmProviderSchema = z.enum(["auto", "github", "gitlab"]);
-export const defaultLanguageSchema = z.enum(["ja", "en"]);
+export const scmProviderSchema = schema(
+  v.picklist(["auto", "github", "gitlab"]),
+);
+export const resolvedScmProviderSchema = schema(
+  v.picklist(["github", "gitlab"]),
+);
+export const defaultLanguageSchema = schema(v.picklist(["ja", "en"]));
 
-export const pluginConfigPathsSchema = z.object({
-  database: z.string().min(1),
-  progressDirectory: z.string().min(1),
-  progressSummary: z.string().min(1),
-  artifactsDirectory: z.string().min(1),
-});
+export const pluginConfigPathsSchema = schema(
+  v.object({
+    database: nonEmptyString(),
+    progressDirectory: nonEmptyString(),
+    progressSummary: nonEmptyString(),
+    artifactsDirectory: nonEmptyString(),
+  }),
+);
 
-export const pluginConfigSchema = z.object({
-  version: z.literal(1),
-  repositoryRoot: z.string().min(1),
-  scmProvider: scmProviderSchema,
-  defaultLanguage: defaultLanguageSchema,
-  paths: pluginConfigPathsSchema,
-});
+export const pluginConfigSchema = schema(
+  v.object({
+    version: v.literal(1),
+    repositoryRoot: nonEmptyString(),
+    scmProvider: scmProviderSchema,
+    defaultLanguage: defaultLanguageSchema,
+    paths: pluginConfigPathsSchema,
+  }),
+);
 
-export const partialPluginConfigSchema = z.object({
-  version: z.literal(1).optional(),
-  repositoryRoot: z.string().min(1).optional(),
-  scmProvider: scmProviderSchema.optional(),
-  defaultLanguage: defaultLanguageSchema.optional(),
-  paths: pluginConfigPathsSchema.partial().optional(),
-});
+export const partialPluginConfigSchema = schema(
+  v.object({
+    version: v.optional(v.literal(1)),
+    repositoryRoot: v.optional(nonEmptyString()),
+    scmProvider: v.optional(scmProviderSchema),
+    defaultLanguage: v.optional(defaultLanguageSchema),
+    paths: v.optional(v.partial(pluginConfigPathsSchema)),
+  }),
+);
 
-export type PluginConfig = z.infer<typeof pluginConfigSchema>;
-export type PartialPluginConfig = z.infer<typeof partialPluginConfigSchema>;
+export type PluginConfig = v.InferOutput<typeof pluginConfigSchema>;
+export type PartialPluginConfig = v.InferOutput<
+  typeof partialPluginConfigSchema
+>;
 
 export type ResolvedPluginConfig = {
   readonly configPath: string;

@@ -2,9 +2,9 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { Database } from "bun:sqlite";
-import { z } from "zod";
 
 import { WORKFLOW_SKILLS, getWorkflowSkillOrThrow } from "../config/workflow";
+import { v } from "../lib/validation";
 import {
   type ChangeAnalysisResult,
   fileChangeAnalysisSchema,
@@ -559,13 +559,18 @@ function mapPrIntakeRow(row: PrIntakeRow): PersistedPrIntake {
     baseBranch: row.base_branch,
     headBranch: row.head_branch,
     headSha: row.head_sha,
-    linkedIssues: z.array(z.string()).parse(JSON.parse(row.linked_issues_json)),
-    changedFiles: z
-      .array(changedFileSchema)
-      .parse(JSON.parse(row.changed_files_json)),
-    reviewComments: z
-      .array(reviewCommentSchema)
-      .parse(JSON.parse(row.review_comments_json)),
+    linkedIssues: v.parse(
+      v.array(v.string()),
+      JSON.parse(row.linked_issues_json),
+    ),
+    changedFiles: v.parse(
+      v.array(changedFileSchema),
+      JSON.parse(row.changed_files_json),
+    ),
+    reviewComments: v.parse(
+      v.array(reviewCommentSchema),
+      JSON.parse(row.review_comments_json),
+    ),
     fetchedAt: row.fetched_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -685,15 +690,18 @@ function mapChangeAnalysisRow(row: ChangeAnalysisRow): PersistedChangeAnalysis {
   return {
     id: row.id,
     prIntakeId: row.pr_intake_id,
-    fileAnalyses: z
-      .array(fileChangeAnalysisSchema)
-      .parse(JSON.parse(row.file_analyses_json)),
-    relatedCodes: z
-      .array(relatedCodeCandidateSchema)
-      .parse(JSON.parse(row.related_codes_json)),
-    viewpointSeeds: z
-      .array(viewpointSeedSchema)
-      .parse(JSON.parse(row.viewpoint_seeds_json)),
+    fileAnalyses: v.parse(
+      v.array(fileChangeAnalysisSchema),
+      JSON.parse(row.file_analyses_json),
+    ),
+    relatedCodes: v.parse(
+      v.array(relatedCodeCandidateSchema),
+      JSON.parse(row.related_codes_json),
+    ),
+    viewpointSeeds: v.parse(
+      v.array(viewpointSeedSchema),
+      JSON.parse(row.viewpoint_seeds_json),
+    ),
     summary: row.summary,
     analyzedAt: row.analyzed_at,
     createdAt: row.created_at,
@@ -820,18 +828,22 @@ function mapTestMappingRow(row: TestMappingRow): PersistedTestMapping {
     id: row.id,
     prIntakeId: row.pr_intake_id,
     changeAnalysisId: row.change_analysis_id,
-    testAssets: z
-      .array(testAssetSchema)
-      .parse(JSON.parse(row.test_assets_json)),
-    testSummaries: z
-      .array(testSummarySchema)
-      .parse(JSON.parse(row.test_summaries_json)),
-    coverageGapMap: z
-      .array(coverageGapEntrySchema)
-      .parse(JSON.parse(row.coverage_gap_map_json)),
-    missingLayers: z
-      .array(testLayerSchema)
-      .parse(JSON.parse(row.missing_layers_json)),
+    testAssets: v.parse(
+      v.array(testAssetSchema),
+      JSON.parse(row.test_assets_json),
+    ),
+    testSummaries: v.parse(
+      v.array(testSummarySchema),
+      JSON.parse(row.test_summaries_json),
+    ),
+    coverageGapMap: v.parse(
+      v.array(coverageGapEntrySchema),
+      JSON.parse(row.coverage_gap_map_json),
+    ),
+    missingLayers: v.parse(
+      v.array(testLayerSchema),
+      JSON.parse(row.missing_layers_json),
+    ),
     mappedAt: row.mapped_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -947,15 +959,18 @@ function mapRiskAssessmentRow(row: RiskAssessmentRow): PersistedRiskAssessment {
   return {
     id: row.id,
     testMappingId: row.test_mapping_id,
-    riskScores: z
-      .array(riskScoreSchema)
-      .parse(JSON.parse(row.risk_scores_json)),
-    frameworkSelections: z
-      .array(frameworkSelectionSchema)
-      .parse(JSON.parse(row.framework_selections_json)),
-    explorationThemes: z
-      .array(explorationThemeSchema)
-      .parse(JSON.parse(row.exploration_themes_json)),
+    riskScores: v.parse(
+      v.array(riskScoreSchema),
+      JSON.parse(row.risk_scores_json),
+    ),
+    frameworkSelections: v.parse(
+      v.array(frameworkSelectionSchema),
+      JSON.parse(row.framework_selections_json),
+    ),
+    explorationThemes: v.parse(
+      v.array(explorationThemeSchema),
+      JSON.parse(row.exploration_themes_json),
+    ),
     assessedAt: row.assessed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1083,9 +1098,10 @@ function mapSessionChartersRow(
   return {
     id: row.id,
     riskAssessmentId: row.risk_assessment_id,
-    charters: z
-      .array(sessionCharterSchema)
-      .parse(JSON.parse(row.charters_json)),
+    charters: v.parse(
+      v.array(sessionCharterSchema),
+      JSON.parse(row.charters_json),
+    ),
     generatedAt: row.generated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

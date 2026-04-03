@@ -1,10 +1,9 @@
-import type { z } from "zod";
+import type { PluginConfig } from "../models/config";
+import { resolvedScmProviderSchema } from "../models/config";
 
-import { scmProviderSchema } from "../models/config";
+const resolvedProviderSchema = resolvedScmProviderSchema;
 
-const resolvedProviderSchema = scmProviderSchema.exclude(["auto"]);
-
-export type ResolvedScmProvider = z.infer<typeof resolvedProviderSchema>;
+export type ResolvedScmProvider = Exclude<PluginConfig["scmProvider"], "auto">;
 
 export function detectScmProvider(
   remoteUrl: string,

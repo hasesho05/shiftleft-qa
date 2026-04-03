@@ -200,7 +200,7 @@ describe("test mapping repository", () => {
     expect(second.missingLayers).toEqual(["visual"]);
   });
 
-  it("round-trips JSON columns through Zod validation", async () => {
+  it("round-trips JSON columns through Valibot validation", async () => {
     const workspace = await setupWorkspace();
     const { prIntakeId, changeAnalysisId } = seedPrAndAnalysis(
       workspace.databasePath,

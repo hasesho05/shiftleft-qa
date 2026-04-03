@@ -1,27 +1,31 @@
-import { z } from "zod";
+import { nonEmptyString, schema, v } from "../lib/validation";
 
-export const skillManifestSchema = z.object({
-  name: z.string().min(1),
-  path: z.string().min(1),
-  description: z.string().min(1),
-});
-
-export const pluginManifestSchema = z.object({
-  name: z.string().min(1),
-  version: z.string().min(1),
-  description: z.string().min(1),
-  runtime: z.object({
-    packageManager: z.string().min(1),
-    entry: z.string().min(1),
+export const skillManifestSchema = schema(
+  v.object({
+    name: nonEmptyString(),
+    path: nonEmptyString(),
+    description: nonEmptyString(),
   }),
-  state: z.object({
-    config: z.string().min(1),
-    database: z.string().min(1),
-    progressDirectory: z.string().min(1),
-    artifactsDirectory: z.string().min(1),
-  }),
-  skills: z.array(skillManifestSchema).min(1),
-});
+);
 
-export type SkillManifest = z.infer<typeof skillManifestSchema>;
-export type PluginManifest = z.infer<typeof pluginManifestSchema>;
+export const pluginManifestSchema = schema(
+  v.object({
+    name: nonEmptyString(),
+    version: nonEmptyString(),
+    description: nonEmptyString(),
+    runtime: v.object({
+      packageManager: nonEmptyString(),
+      entry: nonEmptyString(),
+    }),
+    state: v.object({
+      config: nonEmptyString(),
+      database: nonEmptyString(),
+      progressDirectory: nonEmptyString(),
+      artifactsDirectory: nonEmptyString(),
+    }),
+    skills: v.pipe(v.array(skillManifestSchema), v.minLength(1)),
+  }),
+);
+
+export type SkillManifest = v.InferOutput<typeof skillManifestSchema>;
+export type PluginManifest = v.InferOutput<typeof pluginManifestSchema>;

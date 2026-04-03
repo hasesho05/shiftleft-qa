@@ -214,7 +214,7 @@ describe("risk assessment repository", () => {
     expect(second.frameworkSelections).toHaveLength(2);
   });
 
-  it("round-trips JSON columns through Zod validation", async () => {
+  it("round-trips JSON columns through Valibot validation", async () => {
     const workspace = await setupWorkspace();
     const { testMappingId } = seedPrerequisites(workspace.databasePath);
 

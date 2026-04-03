@@ -109,7 +109,7 @@ items.map((item: Item) => transform(item));
 
 ## Validation and schema rules
 
-- Validate config, CLI input, and external JSON with `zod`.
+- Validate config, CLI input, and external JSON with `valibot`.
 - Keep parsed domain models separate from raw input models.
 - Do not pass unvalidated external data deep into the system.
 

@@ -1,62 +1,56 @@
-import { z } from "zod";
+import { nonEmptyString, positiveInteger, schema, v } from "../lib/validation";
 
-export const findingTypeSchema = z.enum([
-  "defect",
-  "spec-gap",
-  "automation-candidate",
-]);
+export const findingTypeSchema = schema(
+  v.picklist(["defect", "spec-gap", "automation-candidate"]),
+);
 
-export type FindingType = z.infer<typeof findingTypeSchema>;
+export type FindingType = v.InferOutput<typeof findingTypeSchema>;
 
-export const recommendedTestLayerSchema = z.enum([
-  "unit",
-  "integration",
-  "e2e",
-  "visual",
-  "api",
-]);
+export const recommendedTestLayerSchema = schema(
+  v.picklist(["unit", "integration", "e2e", "visual", "api"]),
+);
 
-export type RecommendedTestLayer = z.infer<typeof recommendedTestLayerSchema>;
+export type RecommendedTestLayer = v.InferOutput<
+  typeof recommendedTestLayerSchema
+>;
 
-export const findingSeveritySchema = z.enum([
-  "low",
-  "medium",
-  "high",
-  "critical",
-]);
+export const findingSeveritySchema = schema(
+  v.picklist(["low", "medium", "high", "critical"]),
+);
 
-export type FindingSeverity = z.infer<typeof findingSeveritySchema>;
+export type FindingSeverity = v.InferOutput<typeof findingSeveritySchema>;
 
-export const findingSchema = z
-  .object({
-    sessionId: z.number().int().positive(),
-    observationId: z.number().int().positive(),
-    type: findingTypeSchema,
-    title: z.string().min(1),
-    description: z.string().min(1),
-    severity: findingSeveritySchema,
-    recommendedTestLayer: recommendedTestLayerSchema.nullable(),
-    automationRationale: z.string().min(1).nullable(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.type === "automation-candidate") {
-      if (data.recommendedTestLayer === null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["recommendedTestLayer"],
-          message:
-            "recommendedTestLayer is required for automation-candidate findings",
-        });
-      }
-      if (data.automationRationale === null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["automationRationale"],
-          message:
-            "automationRationale is required for automation-candidate findings",
-        });
-      }
-    }
-  });
+export const findingSchema = schema(
+  v.pipe(
+    v.object({
+      sessionId: positiveInteger(),
+      observationId: positiveInteger(),
+      type: findingTypeSchema,
+      title: nonEmptyString(),
+      description: nonEmptyString(),
+      severity: findingSeveritySchema,
+      recommendedTestLayer: v.nullable(recommendedTestLayerSchema),
+      automationRationale: v.nullable(nonEmptyString()),
+    }),
+    v.forward(
+      v.check(
+        (input) =>
+          input.type !== "automation-candidate" ||
+          input.recommendedTestLayer !== null,
+        "recommendedTestLayer is required for automation-candidate findings",
+      ),
+      ["recommendedTestLayer"],
+    ),
+    v.forward(
+      v.check(
+        (input) =>
+          input.type !== "automation-candidate" ||
+          input.automationRationale !== null,
+        "automationRationale is required for automation-candidate findings",
+      ),
+      ["automationRationale"],
+    ),
+  ),
+);
 
-export type Finding = z.infer<typeof findingSchema>;
+export type Finding = v.InferOutput<typeof findingSchema>;

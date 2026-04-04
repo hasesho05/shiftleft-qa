@@ -40,6 +40,64 @@ export async function createTestWorkspace(): Promise<TestWorkspace> {
             description:
               "Initialize config, workspace state, and progress tracking.",
           },
+          {
+            name: "pr-intake",
+            path: "skills/pr-intake/SKILL.md",
+            description: "Ingest PR or MR metadata and changed files.",
+          },
+          {
+            name: "discover-context",
+            path: "skills/discover-context/SKILL.md",
+            description:
+              "Analyze code and diff context before exploration.",
+          },
+          {
+            name: "map-tests",
+            path: "skills/map-tests/SKILL.md",
+            description:
+              "Map related automated tests and summarize coverage.",
+          },
+          {
+            name: "assess-gaps",
+            path: "skills/assess-gaps/SKILL.md",
+            description:
+              "Identify coverage gaps and select exploratory heuristics.",
+          },
+          {
+            name: "allocate",
+            path: "skills/allocate/SKILL.md",
+            description:
+              "Allocate coverage gaps to testing destinations.",
+          },
+          {
+            name: "handoff",
+            path: "skills/handoff/SKILL.md",
+            description: "Create QA handoff issue on GitHub.",
+          },
+          {
+            name: "generate-charters",
+            path: "skills/generate-charters/SKILL.md",
+            description:
+              "Generate short, executable exploratory session charters.",
+          },
+          {
+            name: "run-session",
+            path: "skills/run-session/SKILL.md",
+            description:
+              "Record exploratory session observations and evidence.",
+          },
+          {
+            name: "triage-findings",
+            path: "skills/triage-findings/SKILL.md",
+            description:
+              "Classify findings into defects, spec gaps, and automation candidates.",
+          },
+          {
+            name: "export-artifacts",
+            path: "skills/export-artifacts/SKILL.md",
+            description:
+              "Export the brief, gap map, charters, and findings reports.",
+          },
         ],
       },
       null,

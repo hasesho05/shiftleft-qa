@@ -38,6 +38,8 @@ import { exportArtifacts } from "../../src/exploratory-testing/tools/export-arti
 import type { ExportArtifactsResult } from "../../src/exploratory-testing/tools/export-artifacts";
 import { runGenerateChartersFromAllocation } from "../../src/exploratory-testing/tools/generate-charters";
 import type { GenerateChartersResult } from "../../src/exploratory-testing/tools/generate-charters";
+import { generateHandoffMarkdown } from "../../src/exploratory-testing/tools/handoff";
+import type { HandoffMarkdownResult } from "../../src/exploratory-testing/tools/handoff";
 import { runMapTestsFromAnalysis } from "../../src/exploratory-testing/tools/map-tests";
 import type { MapTestsResult } from "../../src/exploratory-testing/tools/map-tests";
 import { savePrIntakeResult } from "../../src/exploratory-testing/tools/pr-intake";
@@ -76,6 +78,7 @@ type SkillPipelineResult = {
   readonly mapping: MapTestsResult;
   readonly assess: AssessGapsResult;
   readonly allocate: AllocateResult;
+  readonly handoffMarkdown: HandoffMarkdownResult;
   readonly charters: GenerateChartersResult;
   readonly session: StartSessionResult;
   readonly exportResult: ExportArtifactsResult;
@@ -133,7 +136,12 @@ async function runSkillPipeline(
     manifestPath: workspace.manifestPath,
   });
 
-  // Step 7: handoff (skipped — requires GitHub API)
+  // Step 7: handoff — generate markdown (publish to GitHub is skipped)
+  const handoffMarkdown = await generateHandoffMarkdown({
+    riskAssessmentId: assess.persisted.id,
+    configPath: workspace.configPath,
+    manifestPath: workspace.manifestPath,
+  });
 
   // Step 8: generate-charters (manual-exploration + dev-box items only)
   const manualItems = listAllocationItemsByDestination(
@@ -244,6 +252,7 @@ async function runSkillPipeline(
     mapping,
     assess,
     allocate: allocateResult,
+    handoffMarkdown,
     charters,
     session,
     exportResult,
@@ -274,18 +283,44 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // -----------------------------------------------------------------------
   // SC-1: Setup initialises progress, DB, and current step correctly
   // -----------------------------------------------------------------------
-  it("SC-1: setup produces correct initial state and progress summary", async () => {
-    const { result } = await setup();
+  it("SC-1: setup produces correct initial state before any pipeline step runs", async () => {
+    // Dedicated workspace — only setup runs, no full pipeline
+    const workspace = await createTestWorkspaceWithSampleApp();
+    workspaces.push(workspace.root);
 
+    const setupResult = await initializeWorkspace(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    // DB is created
+    expect(setupResult.databasePath).toBeTruthy();
+
+    // Progress summary exists and reflects initial state
     const summary = await readProgressSummaryDocument(
-      result.config.paths.progressSummary,
+      config.paths.progressSummary,
     );
-
-    // After full pipeline, all non-handoff steps are completed
     expect(summary.frontmatter.total_steps).toBe(WORKFLOW_SKILLS.length);
-    expect(summary.frontmatter.completed_steps).toBeGreaterThanOrEqual(
-      WORKFLOW_SKILLS.length - 1,
+    expect(summary.frontmatter.completed_steps).toBe(1); // only setup
+
+    // All 11 steps are registered; setup is completed, rest is pending
+    const snapshots = listStepProgressSnapshots(config.paths.database);
+    expect(snapshots).toHaveLength(WORKFLOW_SKILLS.length);
+
+    const setupSnapshot = snapshots.find((s) => s.stepName === "setup");
+    expect(setupSnapshot?.status).toBe("completed");
+
+    // current_step should be the first pending step (pr-intake)
+    expect(summary.frontmatter.current_step).toBe("pr-intake");
+
+    const pendingSnapshots = snapshots.filter(
+      (s) => s.status === "pending" && s.stepName !== "setup",
     );
+    expect(pendingSnapshots).toHaveLength(WORKFLOW_SKILLS.length - 1);
   });
 
   // -----------------------------------------------------------------------
@@ -468,9 +503,59 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   });
 
   // -----------------------------------------------------------------------
-  // SC-7: Export artifacts include guarantee-oriented layer summary
+  // SC-7: Handoff output carries confidence-based hypothesis
   // -----------------------------------------------------------------------
-  it("SC-7: exploration brief contains guarantee-oriented layer summary", async () => {
+  it("SC-7: handoff markdown contains confidence badges, sections, and hypothesis caveat", async () => {
+    const { result } = await setup();
+    const { markdown, sections, summary } = result.handoffMarkdown;
+
+    // Markdown is non-empty
+    expect(markdown.length).toBeGreaterThan(100);
+
+    // Contains the three handoff sections
+    expect(markdown).toContain("Already Covered");
+    expect(markdown).toContain("Should Automate");
+    expect(markdown).toContain("Manual Exploration Required");
+
+    // Contains confidence badges (🟢/🟡/🔴)
+    const hasConfidenceBadge =
+      markdown.includes("🟢") ||
+      markdown.includes("🟡") ||
+      markdown.includes("🔴");
+    expect(
+      hasConfidenceBadge,
+      "Handoff markdown should include confidence badges",
+    ).toBe(true);
+
+    // Contains the hypothesis caveat note
+    expect(markdown).toContain("heuristic recommendations");
+    expect(markdown).toContain("Confidence levels");
+
+    // Sections are populated across multiple categories
+    const populatedSections = [
+      sections.alreadyCovered.length > 0,
+      sections.shouldAutomate.length > 0,
+      sections.manualExploration.length > 0,
+    ].filter(Boolean).length;
+    expect(
+      populatedSections,
+      "Should populate at least 2 handoff sections",
+    ).toBeGreaterThanOrEqual(2);
+
+    // Summary counts are consistent
+    expect(summary.totalItems).toBeGreaterThan(0);
+    expect(
+      summary.manualCount + summary.automateCount + summary.coveredCount,
+    ).toBe(summary.totalItems);
+
+    // References the sample app PR
+    expect(markdown).toContain("#55");
+  });
+
+  // -----------------------------------------------------------------------
+  // SC-8: Export artifacts include guarantee-oriented layer summary
+  // -----------------------------------------------------------------------
+  it("SC-8: exploration brief contains guarantee-oriented layer summary", async () => {
     const { result } = await setup();
     const brief = await readFile(
       result.exportResult.artifacts.explorationBrief,
@@ -492,9 +577,9 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   });
 
   // -----------------------------------------------------------------------
-  // SC-8: Export artifacts include heuristic feedback report
+  // SC-9: Export artifacts include heuristic feedback report
   // -----------------------------------------------------------------------
-  it("SC-8: heuristic feedback report is generated with findings correlation", async () => {
+  it("SC-9: heuristic feedback report is generated with findings correlation", async () => {
     const { result } = await setup();
     const report = await readFile(
       result.exportResult.artifacts.heuristicFeedbackReport,
@@ -510,9 +595,9 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   });
 
   // -----------------------------------------------------------------------
-  // SC-9: All 6 artifact files are generated
+  // SC-10: All 6 artifact files are generated
   // -----------------------------------------------------------------------
-  it("SC-9: export-artifacts produces all 6 artifact files", async () => {
+  it("SC-10: export-artifacts produces all 6 artifact files", async () => {
     const { result } = await setup();
     const { artifacts } = result.exportResult;
 
@@ -539,9 +624,9 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   });
 
   // -----------------------------------------------------------------------
-  // SC-10: PR data and findings flow through to exported artifacts
+  // SC-11: PR data and findings flow through to exported artifacts
   // -----------------------------------------------------------------------
-  it("SC-10: exported artifacts reference PR data, session findings, and intent context", async () => {
+  it("SC-11: exported artifacts reference PR data, session findings, and intent context", async () => {
     const { result } = await setup();
     const { artifacts } = result.exportResult;
 

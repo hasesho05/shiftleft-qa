@@ -16,6 +16,7 @@ import {
   saveTestMapping,
   updateSessionStatus,
 } from "../../src/exploratory-testing/db/workspace-repository";
+import type { AllocationItem } from "../../src/exploratory-testing/models/allocation";
 import type { ChangeAnalysisResult } from "../../src/exploratory-testing/models/change-analysis";
 import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type { RiskAssessmentResult } from "../../src/exploratory-testing/models/risk-assessment";
@@ -565,6 +566,161 @@ describe("export-artifacts tool", () => {
     expect(content).not.toContain("## Intent Context");
   });
 
+  it("includes guarantee-oriented layer summary in exploration brief", async () => {
+    const workspace = await createTestWorkspace();
+    workspaces.push(workspace.root);
+    const result = await initializeWorkspace(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const { riskAssessmentId } = seedSessionCharters(result.databasePath);
+
+    const allocationItems: AllocationItem[] = [
+      {
+        riskAssessmentId,
+        title: "Auth validation rules",
+        changedFilePaths: ["src/domain/auth-rules.ts"],
+        riskLevel: "medium",
+        recommendedDestination: "unit",
+        confidence: 0.84,
+        rationale: "Deterministic branching can be pinned before QA handoff",
+        sourceSignals: {
+          categories: ["validation", "state-transition"],
+          existingTestLayers: [],
+          gapAspects: ["boundary", "state-transition"],
+          reviewComments: [],
+          riskSignals: [],
+          reasoningSummary:
+            "Validation and branching are deterministic enough to lock down with unit tests.",
+          alternativeDestinations: ["integration"],
+          openQuestions: [],
+        },
+      },
+      {
+        riskAssessmentId,
+        title: "Auth repository retry handling",
+        changedFilePaths: ["src/repositories/auth-repository.ts"],
+        riskLevel: "high",
+        recommendedDestination: "integration",
+        confidence: 0.79,
+        rationale:
+          "Repository and client coordination should be exercised across boundaries",
+        sourceSignals: {
+          categories: ["api", "cross-service"],
+          existingTestLayers: [],
+          gapAspects: ["error-path", "mock-fixture"],
+          reviewComments: [],
+          riskSignals: [],
+          reasoningSummary:
+            "Repository, client, and retry behavior are boundary concerns that should be checked together.",
+          alternativeDestinations: ["manual-exploration"],
+          openQuestions: ["Does retry stop after the final timeout?"],
+        },
+      },
+      {
+        riskAssessmentId,
+        title: "Login route happy path",
+        changedFilePaths: ["src/routes/login.tsx"],
+        riskLevel: "medium",
+        recommendedDestination: "e2e",
+        confidence: 0.82,
+        rationale: "Primary end-user flow should be exercised in the browser",
+        sourceSignals: {
+          categories: ["ui"],
+          existingTestLayers: [],
+          gapAspects: ["happy-path"],
+          reviewComments: [],
+          riskSignals: [],
+          reasoningSummary:
+            "Route-level interaction and rendering need end-user flow coverage instead of manual-only checking.",
+          alternativeDestinations: ["visual"],
+          openQuestions: [],
+        },
+      },
+      {
+        riskAssessmentId,
+        title: "Ambiguous lockout messaging",
+        changedFilePaths: ["src/routes/login.tsx"],
+        riskLevel: "high",
+        recommendedDestination: "manual-exploration",
+        confidence: 0.61,
+        rationale:
+          "Timing and interpretation remain ambiguous after automation",
+        sourceSignals: {
+          categories: ["ui", "permission"],
+          existingTestLayers: [],
+          gapAspects: ["error-path", "permission"],
+          reviewComments: [],
+          riskSignals: [],
+          reasoningSummary:
+            "Automation can cover the base path, but lockout timing and copy interpretation still need human judgement.",
+          alternativeDestinations: ["e2e"],
+          openQuestions: [
+            "Is the lockout explanation understandable under repeated failures?",
+          ],
+          manualRemainder:
+            "UX wording and timing overlap are still ambiguous after the deterministic checks.",
+        },
+      },
+    ];
+    saveAllocationItems(result.databasePath, riskAssessmentId, allocationItems);
+
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const exportResult = await exportArtifacts({ prIntakeId: 1, config });
+    const content = await readFile(
+      exportResult.artifacts.explorationBrief,
+      "utf8",
+    );
+
+    expect(content).toContain("## Guarantee-Oriented Layer Summary");
+    expect(content).toContain("### 単体テストで保証したいこと");
+    expect(content).toContain(
+      "### 統合テスト / サービステストで保証したいこと",
+    );
+    expect(content).toContain("### UI / E2E テストで保証したいこと");
+    expect(content).toContain("### 手動探索で見ること");
+    expect(content).toContain("この層に寄せる理由");
+    expect(content).toContain("手動探索に残す理由");
+  });
+
+  it("reflects intent wording in guarantee-oriented layer summary when available", async () => {
+    const workspace = await setupWorkspaceWithFullPipeline();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const intent: IntentContext = {
+      changePurpose: "bugfix",
+      userStory:
+        "As a user, I can retry login without confusing lockout behavior",
+      acceptanceCriteria: [
+        "Lockout message is shown after repeated failures",
+        "Expired token errors are recoverable",
+      ],
+      nonGoals: [],
+      targetUsers: ["end-user"],
+      notesForQa: ["Focus on repeated failures and lockout copy"],
+      sourceRefs: [],
+      extractionStatus: "parsed",
+    };
+    saveIntentContext(workspace.databasePath, 1, intent);
+
+    const result = await exportArtifacts({ prIntakeId: 1, config });
+    const content = await readFile(result.artifacts.explorationBrief, "utf8");
+
+    expect(content).toContain("この summary は");
+    expect(content).toContain(
+      "Lockout message is shown after repeated failures",
+    );
+    expect(content).toContain(
+      "As a user, I can retry login without confusing lockout behavior",
+    );
+  });
+
   describe("heuristic feedback report", () => {
     async function setupWithAllocations(): Promise<
       TestWorkspace & {
@@ -767,8 +923,9 @@ describe("export-artifacts tool", () => {
         workspace.configPath,
         workspace.manifestPath,
       );
-      const { sessionChartersId } =
-        seedSessionChartersWithAllocations(result.databasePath);
+      const { sessionChartersId } = seedSessionChartersWithAllocations(
+        result.databasePath,
+      );
 
       // Session but no findings
       const session = saveSession(result.databasePath, {

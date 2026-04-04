@@ -55,6 +55,47 @@ export async function createTestWorkspace(): Promise<TestWorkspace> {
   };
 }
 
+/**
+ * Create a test workspace pre-populated with sample app fixture files.
+ *
+ * The fixture layout gives the heuristic engine real file paths to classify
+ * (unit tests, integration tests, source files) so that test-mapping and
+ * allocation produce realistic results.
+ */
+export async function createTestWorkspaceWithSampleApp(): Promise<TestWorkspace> {
+  const workspace = await createTestWorkspace();
+
+  // Stub source files (content is irrelevant — the pipeline works off paths)
+  const sourceFiles = [
+    "src/components/TaskList.tsx",
+    "src/api/routes/tasks.ts",
+    "src/validators/task-schema.ts",
+    "src/store/task-state.ts",
+    "src/middleware/role-guard.ts",
+    "prisma/migrations/001_tasks.sql",
+    "src/lib/status-badge.tsx",
+    "src/pages/task-detail.tsx",
+  ];
+
+  // Partial test coverage — only some files have tests
+  const testFiles = [
+    "tests/unit/task-schema.test.ts",
+    "tests/integration/tasks-api.test.ts",
+  ];
+
+  const allFiles = [...sourceFiles, ...testFiles];
+
+  await Promise.all(
+    allFiles.map(async (filePath) => {
+      const fullPath = join(workspace.root, filePath);
+      await mkdir(join(fullPath, ".."), { recursive: true });
+      await writeFile(fullPath, `// stub: ${filePath}\n`, "utf8");
+    }),
+  );
+
+  return workspace;
+}
+
 export async function cleanupTestWorkspace(root: string): Promise<void> {
   await rm(root, { recursive: true, force: true });
 }

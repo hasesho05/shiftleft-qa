@@ -1,4 +1,5 @@
 import {
+  saveAllocationItems,
   saveChangeAnalysis,
   saveObservation,
   savePrIntake,
@@ -8,6 +9,7 @@ import {
   saveTestMapping,
   updateSessionStatus,
 } from "../../src/exploratory-testing/db/workspace-repository";
+import type { AllocationItem } from "../../src/exploratory-testing/models/allocation";
 import type { ChangeAnalysisResult } from "../../src/exploratory-testing/models/change-analysis";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
 import type { RiskAssessmentResult } from "../../src/exploratory-testing/models/risk-assessment";
@@ -42,6 +44,7 @@ export function createSamplePrMetadata(): PrMetadata {
 
 export function seedSessionCharters(databasePath: string): {
   sessionChartersId: number;
+  riskAssessmentId: number;
 } {
   const prIntake = savePrIntake(databasePath, createSamplePrMetadata());
   const changeAnalysis = saveChangeAnalysis(databasePath, {
@@ -85,7 +88,7 @@ export function seedSessionCharters(databasePath: string): {
         title: "Auth error handling",
         goal: "Verify error responses",
         scope: ["src/middleware/auth.ts"],
-        selectedFrameworks: ["error-guessing"],
+        selectedFrameworks: ["error-guessing", "boundary-value-analysis"],
         preconditions: [],
         observationTargets: [
           { category: "network", description: "Check responses" },
@@ -97,7 +100,75 @@ export function seedSessionCharters(databasePath: string): {
     generatedAt: "2026-04-01T00:00:00Z",
   } satisfies SessionCharterGenerationResult);
 
-  return { sessionChartersId: sessionCharters.id };
+  return {
+    sessionChartersId: sessionCharters.id,
+    riskAssessmentId: riskAssessment.id,
+  };
+}
+
+export function createSampleAllocationItems(
+  riskAssessmentId: number,
+): readonly AllocationItem[] {
+  return [
+    {
+      riskAssessmentId,
+      title: "Auth middleware error paths",
+      changedFilePaths: ["src/middleware/auth.ts"],
+      riskLevel: "high",
+      recommendedDestination: "manual-exploration",
+      confidence: 0.85,
+      rationale: "Complex error handling requires manual exploration",
+      sourceSignals: {
+        categories: ["permission"],
+        existingTestLayers: [],
+        gapAspects: ["error-path", "permission"],
+        reviewComments: [],
+        riskSignals: ["no existing tests"],
+      },
+    },
+    {
+      riskAssessmentId,
+      title: "Auth input validation",
+      changedFilePaths: ["src/middleware/auth.ts"],
+      riskLevel: "medium",
+      recommendedDestination: "unit",
+      confidence: 0.7,
+      rationale: "Boundary checks are unit-testable",
+      sourceSignals: {
+        categories: ["permission"],
+        existingTestLayers: [],
+        gapAspects: ["boundary"],
+        reviewComments: [],
+        riskSignals: [],
+      },
+    },
+    {
+      riskAssessmentId,
+      title: "Auth code review items",
+      changedFilePaths: ["src/middleware/auth.ts"],
+      riskLevel: "low",
+      recommendedDestination: "review",
+      confidence: 0.4,
+      rationale: "Naming conventions need review",
+      sourceSignals: {
+        categories: ["permission"],
+        existingTestLayers: [],
+        gapAspects: ["happy-path"],
+        reviewComments: ["naming"],
+        riskSignals: [],
+      },
+    },
+  ];
+}
+
+export function seedSessionChartersWithAllocations(databasePath: string): {
+  sessionChartersId: number;
+  riskAssessmentId: number;
+} {
+  const result = seedSessionCharters(databasePath);
+  const items = createSampleAllocationItems(result.riskAssessmentId);
+  saveAllocationItems(databasePath, result.riskAssessmentId, items);
+  return result;
 }
 
 export function seedSessionWithObservation(databasePath: string): {

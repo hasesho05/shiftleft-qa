@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  saveAllocationItems,
   saveChangeAnalysis,
   saveFinding,
   saveIntentContext,
@@ -27,8 +28,10 @@ import {
 } from "../../src/exploratory-testing/tools/export-artifacts";
 import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
 import {
+  createSampleAllocationItems,
   createSamplePrMetadata,
   seedSessionCharters,
+  seedSessionChartersWithAllocations,
 } from "../helpers/seed-data";
 import {
   type TestWorkspace,
@@ -118,7 +121,7 @@ describe("export-artifacts tool", () => {
     };
   }
 
-  it("exports all 5 artifact files", async () => {
+  it("exports all 6 artifact files", async () => {
     const workspace = await setupWorkspaceWithFullPipeline();
     const config = await readPluginConfig(
       workspace.configPath,
@@ -136,6 +139,9 @@ describe("export-artifacts tool", () => {
     expect(result.artifacts.findingsReport).toMatch(/findings-report\.md$/);
     expect(result.artifacts.automationCandidateReport).toMatch(
       /automation-candidate-report\.md$/,
+    );
+    expect(result.artifacts.heuristicFeedbackReport).toMatch(
+      /heuristic-feedback-report\.md$/,
     );
   });
 
@@ -557,5 +563,250 @@ describe("export-artifacts tool", () => {
     const content = await readFile(result.artifacts.explorationBrief, "utf8");
 
     expect(content).not.toContain("## Intent Context");
+  });
+
+  describe("heuristic feedback report", () => {
+    async function setupWithAllocations(): Promise<
+      TestWorkspace & {
+        databasePath: string;
+        sessionChartersId: number;
+        sessionId: number;
+      }
+    > {
+      const workspace = await createTestWorkspace();
+      workspaces.push(workspace.root);
+      const result = await initializeWorkspace(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+      const databasePath = result.databasePath;
+
+      const { sessionChartersId } =
+        seedSessionChartersWithAllocations(databasePath);
+
+      const session = saveSession(databasePath, {
+        sessionChartersId,
+        charterIndex: 0,
+        charterTitle: "Auth error handling",
+      });
+      updateSessionStatus(databasePath, {
+        sessionId: session.id,
+        status: "in_progress",
+        startedAt: "2026-04-01T10:00:00Z",
+      });
+
+      const observation = saveObservation(databasePath, {
+        sessionId: session.id,
+        targetedHeuristic: "error-guessing",
+        action: "Submit invalid credentials",
+        expected: "Error message",
+        actual: "Application crashed",
+        outcome: "fail",
+        note: "Unhandled rejection",
+        evidencePath: null,
+      });
+
+      updateSessionStatus(databasePath, {
+        sessionId: session.id,
+        status: "completed",
+        completedAt: "2026-04-01T10:30:00Z",
+      });
+
+      saveFinding(databasePath, {
+        sessionId: session.id,
+        observationId: observation.id,
+        type: "defect",
+        title: "Crash on invalid credentials",
+        description: "Unhandled rejection when submitting bad creds",
+        severity: "high",
+        recommendedTestLayer: null,
+        automationRationale: null,
+      });
+
+      saveFinding(databasePath, {
+        sessionId: session.id,
+        observationId: observation.id,
+        type: "automation-candidate",
+        title: "Auth boundary validation",
+        description: "Min/max input boundaries",
+        severity: "medium",
+        recommendedTestLayer: "unit",
+        automationRationale: "Deterministic boundary check",
+      });
+
+      return {
+        ...workspace,
+        databasePath,
+        sessionChartersId,
+        sessionId: session.id,
+      };
+    }
+
+    it("exports heuristic feedback report as artifact", async () => {
+      const workspace = await setupWithAllocations();
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const result = await exportArtifacts({ prIntakeId: 1, config });
+
+      expect(result.artifacts.heuristicFeedbackReport).toMatch(
+        /heuristic-feedback-report\.md$/,
+      );
+    });
+
+    it("attributes findings only to manual-exploration destination", async () => {
+      const workspace = await setupWithAllocations();
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const result = await exportArtifacts({ prIntakeId: 1, config });
+      const content = await readFile(
+        result.artifacts.heuristicFeedbackReport,
+        "utf8",
+      );
+
+      expect(content).toContain("# Heuristic Feedback Report");
+      expect(content).toContain("## Findings by Allocation Destination");
+      // manual-exploration has 1 item and 2 findings
+      expect(content).toContain("| manual-exploration | 1 | 2 |");
+      // review has 1 item but 0 findings (not explored)
+      expect(content).toContain("| review | 1 | 0 |");
+      // unit has 1 item but 0 findings (not explored)
+      expect(content).toContain("| unit | 1 | 0 |");
+    });
+
+    it("attributes confidence bucket only from manual-exploration items", async () => {
+      const workspace = await setupWithAllocations();
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const result = await exportArtifacts({ prIntakeId: 1, config });
+      const content = await readFile(
+        result.artifacts.heuristicFeedbackReport,
+        "utf8",
+      );
+
+      expect(content).toContain("## Findings by Confidence Bucket");
+      // manual-exploration item has confidence 0.85 = high bucket, 2 findings
+      expect(content).toContain("| high | 1 | 2 |");
+      // medium bucket has 1 item (unit, confidence 0.7) but 0 findings
+      expect(content).toContain("| medium | 1 | 0 |");
+      // low bucket has 1 item (review, confidence 0.4) but 0 findings
+      expect(content).toContain("| low | 1 | 0 |");
+    });
+
+    it("attributes gap aspects only from manual-exploration items", async () => {
+      const workspace = await setupWithAllocations();
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const result = await exportArtifacts({ prIntakeId: 1, config });
+      const content = await readFile(
+        result.artifacts.heuristicFeedbackReport,
+        "utf8",
+      );
+
+      expect(content).toContain("## Findings by Gap Aspect");
+      // manual-exploration item has gapAspects: ["error-path", "permission"]
+      expect(content).toContain("| error-path | 2 |");
+      expect(content).toContain("| permission | 2 |");
+      // "boundary" is only on the unit item — should NOT appear
+      expect(content).not.toContain("| boundary |");
+      // "happy-path" is only on the review item — should NOT appear
+      expect(content).not.toContain("| happy-path |");
+    });
+
+    it("contains findings-by-charter section", async () => {
+      const workspace = await setupWithAllocations();
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const result = await exportArtifacts({ prIntakeId: 1, config });
+      const content = await readFile(
+        result.artifacts.heuristicFeedbackReport,
+        "utf8",
+      );
+
+      expect(content).toContain("## Findings by Charter");
+      expect(content).toContain("Auth error handling");
+    });
+
+    it("contains findings-by-framework section", async () => {
+      const workspace = await setupWithAllocations();
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const result = await exportArtifacts({ prIntakeId: 1, config });
+      const content = await readFile(
+        result.artifacts.heuristicFeedbackReport,
+        "utf8",
+      );
+
+      expect(content).toContain("## Findings by Framework");
+      // charter has selectedFrameworks: ["error-guessing", "boundary-value-analysis"]
+      expect(content).toContain("| boundary-value-analysis | 2 |");
+      expect(content).toContain("| error-guessing | 2 |");
+    });
+
+    it("shows empty findings when no findings exist", async () => {
+      const workspace = await createTestWorkspace();
+      workspaces.push(workspace.root);
+      const result = await initializeWorkspace(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+      const { sessionChartersId } =
+        seedSessionChartersWithAllocations(result.databasePath);
+
+      // Session but no findings
+      const session = saveSession(result.databasePath, {
+        sessionChartersId,
+        charterIndex: 0,
+        charterTitle: "Auth error handling",
+      });
+      updateSessionStatus(result.databasePath, {
+        sessionId: session.id,
+        status: "completed",
+        completedAt: "2026-04-01T10:30:00Z",
+      });
+
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+      const exportResult = await exportArtifacts({ prIntakeId: 1, config });
+      const content = await readFile(
+        exportResult.artifacts.heuristicFeedbackReport,
+        "utf8",
+      );
+
+      expect(content).toContain("# Heuristic Feedback Report");
+      expect(content).toContain("**Total findings**: 0");
+    });
+
+    it("includes report path in handover summary", async () => {
+      const workspace = await setupWithAllocations();
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const result = await exportArtifacts({ prIntakeId: 1, config });
+      const handoverContent = await readFile(result.handover.filePath, "utf8");
+
+      expect(handoverContent).toContain("heuristic-feedback-report");
+    });
   });
 });

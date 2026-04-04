@@ -1,0 +1,31 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "exploratory-testing-plugin",
+  "owner": {
+    "name": "hasesho05"
+  },
+  "metadata": {
+    "description": "Shift-left test allocation と GitHub QA handoff のための Claude Code Plugin"
+  },
+  "plugins": [
+    {
+      "name": "exploratory-testing-plugin",
+      "source": "./",
+      "description": "PR の確認項目を allocation し、manual exploration だけを GitHub Issue に handoff する Claude Code Plugin。",
+      "skills": [
+        "capabilities",
+        "setup",
+        "pr-intake",
+        "discover-context",
+        "map-tests",
+        "assess-gaps",
+        "allocate",
+        "handoff",
+        "generate-charters",
+        "run-session",
+        "triage-findings",
+        "export-artifacts"
+      ]
+    }
+  ]
+}

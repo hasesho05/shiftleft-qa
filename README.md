@@ -1,19 +1,170 @@
 # exploratory-testing-plugin
 
-Claude Code Plugin for risk-driven manual exploratory testing after implementation.
+PR の変更内容を読み、確認項目を `review` / `unit` / `integration` / `e2e` / `visual` / `dev-box` / `manual-exploration` / `skip` に振り分け、最後に残った手動探索だけを GitHub Issue に handoff する Claude Code 向けプラグインです。
 
-## Runtime choices
+この plugin の目的は、手動探索を増やすことではありません。  
+review / automated test / dev-box で前倒しに潰せる項目を切り出し、最後に残る manual exploration だけを QA に渡すことを目的としています。
 
-- Primary runtime: Bun
-- Compatibility target: Node.js 20+
-- Test runner: Vitest
-- Lint / format: Biome
+## 想定ユーザー
 
-This repository is optimized for `bun`, but the code should stay close to standard Node-compatible TypeScript unless there is a clear payoff.
+対象 | 利用イメージ | 対応レベル
+--- | --- | ---
+実装者 | PR 前後に plugin を実行し、QA handoff を GitHub Issue に publish / update する | Full
+QA / reviewer | GitHub Issue を起点に manual exploration を再開する | Full
+開発チーム | review / automation / dev-box に寄せられる項目を早めに切り出す | Full
 
-## Verified local prerequisites
+## 対応範囲
 
-Validated in this workspace on 2026-03-31 with:
+対象 | 対応レベル | 備考
+--- | --- | ---
+GitHub PR ベースの workflow | Full | v2 の主対象
+shift-left test allocation | Full | 8 destination に振り分け
+GitHub Issue checklist handoff | Full | publish / update / findings comment
+manual exploration charter generation | Full | `manual-exploration` 項目のみ対象
+local resumable state | Full | local DB + progress files
+artifact export | Partial | 補助資料としてのみ扱う
+
+## 非対応
+
+対象 | 理由
+--- | ---
+GitLab handoff の完成形 | `glab` まわりは未完成
+manual exploration の完全自動化 | 観察と推論を置き換えるものではない
+shared source of truth としての local DB | 運用方針として採らない
+live GitHub / GitLab API E2E | 現状は local / mocked test 中心
+
+## このプラグインの考え方
+
+- shared source of truth は GitHub Issue
+- local DB / progress files は個人作業の resumable state / cache
+- exported artifacts は補助資料であり、primary handoff ではない
+- 手動探索で大事なのは checklist の件数ではなく、状態・境界・タイミング・解釈の曖昧さを推論しながら観察すること
+- そのため `generate-charters` は allocation の残余である `manual-exploration` だけを対象にする
+
+## インストール
+
+### 方法 1: Claude Code Plugin として使う
+
+通常はこちらを想定します。
+
+```bash
+/plugin marketplace add hasesho05/exploratory-testing-plugin
+/plugin install exploratory-testing-plugin@exploratory-testing-plugin
+```
+
+### 方法 2: このリポジトリを clone して開発・検証する
+
+plugin / skill 自体を開発したい場合はこちらです。
+
+```bash
+gh auth status
+bun install
+bun run doctor
+bun run check
+```
+
+## 使い方
+
+### 基本の使い方
+
+通常は Claude Code から skill を呼びます。  
+利用者が毎回 `bun run ...` を手で打つ前提ではなく、AI に workflow を進めてもらう想定です。
+
+基本の流れ:
+
+1. 必要なら `capabilities` で前提と非対応を確認する
+2. `setup` で local state を初期化する
+3. `pr-intake` 以降で PR を解析する
+4. AI が allocation を作り、GitHub QA handoff Issue を publish / update する
+5. `manual-exploration` に残った項目だけから charter を作る
+6. 探索結果を findings として GitHub に返す
+
+### Claude Code での開始例
+
+```text
+/capabilities
+/setup
+```
+
+またはそのまま:
+
+```text
+/setup
+```
+
+### 内部的な workflow
+
+裏側では次の順で step が進みます。
+
+```text
+capabilities
+→ setup
+→ pr-intake
+→ discover-context
+→ map-tests
+→ assess-gaps
+→ allocate
+→ handoff
+→ generate-charters
+→ run-session
+→ triage-findings
+→ export-artifacts
+```
+
+## 主要スキル
+
+スキル | 役割
+--- | ---
+`capabilities` | 対応範囲・前提・非対応を案内する
+`setup` | local state を初期化する
+`pr-intake` | PR metadata と changed files を取り込む
+`discover-context` | changed files 周辺の文脈を解析する
+`map-tests` | 関連テストと coverage gap を整理する
+`assess-gaps` | risk score / framework / exploration themes を作る
+`allocate` | 確認項目を destination ごとに振り分ける
+`handoff` | GitHub Issue に QA handoff を publish / update する
+`generate-charters` | `manual-exploration` 項目だけから charter を作る
+`run-session` | 手動探索セッションを記録する
+`triage-findings` | observations を defect / spec-gap / automation-candidate に整理する
+`export-artifacts` | 補助資料として markdown artifacts を出力する
+
+## Source of Truth
+
+対象 | 役割
+--- | ---
+GitHub Issue | 実装者 / QA / reviewer 間の shared handoff の正本
+Local SQLite DB | resumable state / cache
+Progress markdown files | ローカルの handover / audit trail
+Exported markdown artifacts | deep dive 用の補助資料
+
+## 出力物
+
+primary handoff は GitHub Issue です。  
+`output/` は必要なときだけ `export-artifacts` で補助資料として出力します。常に自動生成される主成果物ではありません。
+
+ファイル | 内容
+--- | ---
+`exploration-brief.md` | PR 概要、変更カテゴリ、viewpoint seeds、リスク要約
+`coverage-gap-map.md` | coverage gaps、missing layers、関連テスト候補
+`session-charters.md` | `manual-exploration` 向け charter
+`findings-report.md` | findings 一覧
+`automation-candidate-report.md` | automation candidate 一覧
+
+## 前提条件
+
+必須:
+
+- `bun`
+- `git`
+- `gh`
+
+任意:
+
+- `node`
+- `sqlite3`
+- `glab`
+
+この workspace での確認済みバージョン:
 
 - Bun `1.3.5`
 - Node.js `v20.19.0`
@@ -21,95 +172,9 @@ Validated in this workspace on 2026-03-31 with:
 - Git `2.39.3`
 - SQLite `3.43.2`
 
-## Required tools
+## 設定ファイル
 
-- `bun`
-- `gh`
-- `git`
-
-## Optional tools
-
-- `node`
-- `glab`
-- `sqlite3`
-
-## Setup
-
-1. Authenticate GitHub CLI.
-2. Install dependencies.
-3. Run the environment doctor.
-4. Run tests and type checks.
-
-```bash
-gh auth status
-bun install
-bun run doctor
-bun run test
-bun run typecheck
-```
-
-## Available scripts
-
-```bash
-bun run doctor
-bun run dev --help
-bun run dev setup
-bun run dev db init
-bun run dev progress summary
-bun run test
-bun run test:watch
-bun run typecheck
-bun run lint
-bun run format
-bun run check
-```
-
-## Environment notes
-
-- Prefer `gh auth` over raw tokens when possible.
-- Keep secrets out of `config.json`; use environment variables only for auth or external integrations.
-- `setup` writes relative paths to `config.json` and resolves them to absolute paths at the CLI boundary.
-- Workspace state is persisted in both markdown progress files and a local SQLite database.
-- The production DB path uses Bun's SQLite support; the Vitest shim uses `sqlite3` when tests run under Node-compatible workers.
-
-## Proposed libraries
-
-- `cac`: small CLI definition
-- `valibot`: runtime validation for config and JSON I/O
-- `execa`: subprocess wrapper for `gh`, `git`, `glab`
-- `gray-matter`: markdown frontmatter parsing
-- `tinyglobby`: file discovery for tests, stories, fixtures
-- `vitest`: unit and integration tests
-- `@biomejs/biome`: lint and format
-
-## Current repository layout
-
-```text
-.
-├── .claude-plugin/
-├── .exploratory-testing/
-├── skills/
-├── src/
-│   └── exploratory-testing/
-│       ├── cli/
-│       ├── config/
-│       ├── db/
-│       ├── models/
-│       └── tools/
-├── tests/
-│   ├── helpers/
-│   └── unit/
-├── config.example.json
-├── .env.example
-├── biome.json
-├── package.json
-├── tsconfig.json
-└── vitest.config.ts
-```
-
-## Workspace state
-
-`config.example.json` shows the expected schema:
+`config.example.json` は次の形です。
 
 ```json
 {
@@ -126,65 +191,68 @@ bun run check
 }
 ```
 
-`bun run dev setup` initializes:
+補足:
 
-- `config.json`
-- `exploratory-testing.db`
-- `.exploratory-testing/progress/progress-summary.md`
-- `.exploratory-testing/progress/01-setup.md`
+- `setup` は相対パスを `config.json` に保存する
+- CLI 境界で絶対パスに解決する
+- secrets は `config.json` に入れない
+- GitHub 認証は raw token より `gh auth` を優先する
 
-## End-to-end workflow
+## 注意事項
 
-The plugin follows an 11-step linear workflow. Each step produces structured output that feeds the next.
+- local DB / progress files は shared source of truth ではありません
+- GitHub Issue が QA handoff の正本です
+- この plugin の目的は manual exploration を増やすことではなく、manual に残る前に削ることです
+- exported artifacts は補助資料であり、運用の主役ではありません
+- 手動探索では checklist 消化よりも、推論しながら曖昧さを観察することを重視します
 
-```bash
-# 1. Initialize workspace
-bun run dev setup
+## 開発者向け
 
-# 2. Ingest PR metadata and changed files
-bun run dev pr-intake --pr <number>
+利用者向け情報より後ろに置くべき最低限だけをまとめます。
 
-# 3. Analyze diff and context
-bun run dev discover-context --pr <number> --provider github --repository owner/repo
+### 技術スタック
 
-# 4. Map tests and build coverage gap map
-bun run dev map-tests --pr <number> --provider github --repository owner/repo
+- Runtime: Bun
+- Compatibility target: Node.js 20+
+- Test: Vitest
+- Lint / format: Biome
+- Validation: Valibot
+- CLI: `cac`
+- Subprocess: `execa`
 
-# 5. Score risk, select frameworks, generate exploration themes
-bun run dev assess-gaps --pr <number> --provider github --repository owner/repo
+### リポジトリ構成
 
-# 6. Allocate coverage gaps to testing destinations
-bun run dev allocate run --risk-assessment-id <id>
-
-# 7. Create QA handoff issue
-bun run dev handoff publish --risk-assessment-id <id>
-
-# 8. Generate session charters (manual-exploration items only)
-bun run dev generate-charters --pr <number> --provider github --repository owner/repo
-
-# 9. Run exploratory sessions
-bun run dev session start --session-charters-id <id> --charter-index 0
-bun run dev session observe --session <id> --heuristic "..." --action "..." --expected "..." --actual "..." --outcome pass
-bun run dev session complete --session <id>
-
-# 10. Triage findings
-bun run dev finding add --session <id> --observation <id> --type defect --title "..." --description "..." --severity high
-bun run dev finding handover --session <id>
-
-# 11. Export final artifacts
-bun run dev export-artifacts --pr-intake-id <id>
+```text
+.
+├── .claude-plugin/
+├── .exploratory-testing/
+├── skills/
+├── src/exploratory-testing/
+│   ├── analysis/
+│   ├── cli/
+│   ├── config/
+│   ├── db/
+│   ├── models/
+│   ├── scm/
+│   └── tools/
+├── tests/
+│   ├── e2e/
+│   ├── helpers/
+│   └── unit/
+├── config.example.json
+├── package.json
+├── tsconfig.json
+└── vitest.config.ts
 ```
 
-All state is stored in the local SQLite database and progress files. Sessions can be interrupted and resumed at any point.
+### 開発コマンド
 
-### Output artifacts
+```bash
+bun run test
+bun run typecheck
+bun run lint
+bun run format
+bun run check
+```
 
-After step 11, the `output/` directory contains:
-
-| File | Description |
-|---|---|
-| `exploration-brief.md` | PR summary, change categories, viewpoint seeds, high-risk areas |
-| `coverage-gap-map.md` | Coverage gaps, missing test layers, existing test assets |
-| `session-charters.md` | Executable exploration plans with scope and frameworks |
-| `findings-report.md` | All findings organized by type and severity |
-| `automation-candidate-report.md` | Automation candidates grouped by recommended test layer |
+この README は `shinkoku` の README 構成を参考に、利用者向け説明を前半、開発者向け情報を後半に寄せています。

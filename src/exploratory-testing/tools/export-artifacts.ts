@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import {
+  type PersistedAllocationItem,
   type PersistedChangeAnalysis,
   type PersistedFinding,
   type PersistedPrIntake,
@@ -15,11 +16,16 @@ import {
   findRiskAssessment,
   findSessionCharters,
   findTestMapping,
+  listAllocationItems,
   listFindings,
   listSessionsByChartersId,
 } from "../db/workspace-repository";
 import { escapePipe } from "../lib/markdown";
 import { renderIntentContextLines } from "../lib/render-intent-context";
+import {
+  type ConfidenceBucket,
+  toConfidenceBucket,
+} from "../models/allocation";
 import type { ResolvedPluginConfig } from "../models/config";
 import type { IntentContext } from "../models/intent-context";
 import {
@@ -43,6 +49,7 @@ export type ExportArtifactsResult = {
     readonly sessionCharters: string;
     readonly findingsReport: string;
     readonly automationCandidateReport: string;
+    readonly heuristicFeedbackReport: string;
   };
   readonly handover: StepHandoverWriteResult;
 };
@@ -56,6 +63,7 @@ type CollectedData = {
   readonly changeAnalysis: PersistedChangeAnalysis;
   readonly testMapping: PersistedTestMapping;
   readonly riskAssessment: PersistedRiskAssessment;
+  readonly allocationItems: readonly PersistedAllocationItem[];
   readonly sessionCharters: PersistedSessionCharters;
   readonly sessions: readonly PersistedSession[];
   readonly findings: readonly PersistedFinding[];
@@ -89,6 +97,10 @@ export async function exportArtifacts(
     artifactsDir,
     "automation-candidate-report.md",
   );
+  const heuristicFeedbackReportPath = resolve(
+    artifactsDir,
+    "heuristic-feedback-report.md",
+  );
 
   await Promise.all([
     writeFile(explorationBriefPath, buildExplorationBrief(data), "utf8"),
@@ -100,16 +112,24 @@ export async function exportArtifacts(
       buildAutomationCandidateReport(data),
       "utf8",
     ),
+    writeFile(
+      heuristicFeedbackReportPath,
+      buildHeuristicFeedbackReport(data),
+      "utf8",
+    ),
   ]);
 
-  const summary = buildHandoverSummary(data);
-  const body = buildHandoverBody(data, {
+  const artifactPaths = {
     explorationBrief: explorationBriefPath,
     coverageGapMap: coverageGapMapPath,
     sessionCharters: sessionChartersPath,
     findingsReport: findingsReportPath,
     automationCandidateReport: automationCandidateReportPath,
-  });
+    heuristicFeedbackReport: heuristicFeedbackReportPath,
+  };
+
+  const summary = buildHandoverSummary(data);
+  const body = buildHandoverBody(data, artifactPaths);
 
   const handover = await writeStepHandoverFromConfig(config, {
     stepName: "export-artifacts",
@@ -118,16 +138,7 @@ export async function exportArtifacts(
     body,
   });
 
-  return {
-    artifacts: {
-      explorationBrief: explorationBriefPath,
-      coverageGapMap: coverageGapMapPath,
-      sessionCharters: sessionChartersPath,
-      findingsReport: findingsReportPath,
-      automationCandidateReport: automationCandidateReportPath,
-    },
-    handover,
-  };
+  return { artifacts: artifactPaths, handover };
 }
 
 // ---------------------------------------------------------------------------
@@ -166,6 +177,8 @@ function collectData(
     );
   }
 
+  const allocationItems = listAllocationItems(databasePath, riskAssessment.id);
+
   const sessions = listSessionsByChartersId(databasePath, sessionCharters.id);
   const findings: PersistedFinding[] = [];
   for (const session of sessions) {
@@ -180,6 +193,7 @@ function collectData(
     changeAnalysis,
     testMapping,
     riskAssessment,
+    allocationItems,
     sessionCharters,
     sessions,
     findings,
@@ -482,6 +496,252 @@ function buildAutomationCandidateReport(data: CollectedData): string {
 }
 
 // ---------------------------------------------------------------------------
+// Heuristic Feedback Report
+// ---------------------------------------------------------------------------
+
+function buildHeuristicFeedbackReport(data: CollectedData): string {
+  const { findings, allocationItems, sessions, sessionCharters } = data;
+  const lines: string[] = [];
+
+  lines.push("# Heuristic Feedback Report", "");
+  lines.push(`**Total findings**: ${findings.length}`);
+  lines.push(`**Total allocation items**: ${allocationItems.length}`);
+  lines.push(`**Total charters**: ${sessionCharters.charters.length}`);
+  lines.push("");
+
+  if (allocationItems.length === 0 && findings.length === 0) {
+    lines.push("No allocation items or findings to correlate.", "");
+    return lines.join("\n");
+  }
+
+  // Build session-to-charter lookup
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+
+  // Build charter-scope-to-allocation lookup: for each file path, which allocation items reference it
+  const allocationsByFile = new Map<string, PersistedAllocationItem[]>();
+  for (const item of allocationItems) {
+    for (const filePath of item.changedFilePaths) {
+      const existing = allocationsByFile.get(filePath) ?? [];
+      existing.push(item);
+      allocationsByFile.set(filePath, existing);
+    }
+  }
+
+  // Resolve each finding to its matched allocation items via session → charter → scope → allocation
+  const findingAllocations = resolveFindingAllocations(
+    findings,
+    sessionById,
+    sessionCharters,
+    allocationsByFile,
+  );
+
+  lines.push(
+    ...buildFindingsByDestination(findingAllocations, allocationItems),
+  );
+  lines.push(
+    ...buildFindingsByConfidenceBucket(findingAllocations, allocationItems),
+  );
+  lines.push(...buildFindingsByGapAspect(findingAllocations));
+  lines.push(...buildFindingsByCharter(findings, sessionById, sessionCharters));
+
+  return lines.join("\n");
+}
+
+type FindingAllocationPair = {
+  readonly finding: PersistedFinding;
+  readonly matchedItems: readonly PersistedAllocationItem[];
+};
+
+function resolveFindingAllocations(
+  findings: readonly PersistedFinding[],
+  sessionById: ReadonlyMap<number, PersistedSession>,
+  sessionCharters: PersistedSessionCharters,
+  allocationsByFile: ReadonlyMap<string, PersistedAllocationItem[]>,
+): readonly FindingAllocationPair[] {
+  return findings.map((finding) => {
+    const session = sessionById.get(finding.sessionId);
+    if (!session) {
+      return { finding, matchedItems: [] };
+    }
+
+    const charter = sessionCharters.charters[session.charterIndex];
+    if (!charter) {
+      return { finding, matchedItems: [] };
+    }
+
+    // Collect allocation items whose changedFilePaths overlap with charter scope
+    const matchedItemIds = new Set<number>();
+    const matchedItems: PersistedAllocationItem[] = [];
+    for (const scopePath of charter.scope) {
+      const items = allocationsByFile.get(scopePath) ?? [];
+      for (const item of items) {
+        if (!matchedItemIds.has(item.id)) {
+          matchedItemIds.add(item.id);
+          matchedItems.push(item);
+        }
+      }
+    }
+
+    return { finding, matchedItems };
+  });
+}
+
+function countByKey<T, K extends string>(
+  items: readonly T[],
+  keyFn: (item: T) => K,
+): Map<K, number> {
+  const counts = new Map<K, number>();
+  for (const item of items) {
+    const key = keyFn(item);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function countFindingsByKey<K extends string>(
+  pairs: readonly FindingAllocationPair[],
+  keyFn: (item: PersistedAllocationItem) => K,
+): Map<K, number> {
+  const counts = new Map<K, number>();
+  for (const { matchedItems } of pairs) {
+    const keys = new Set(matchedItems.map(keyFn));
+    for (const key of keys) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function buildItemFindingsTable(
+  heading: string,
+  columnLabel: string,
+  keys: readonly string[],
+  itemCounts: ReadonlyMap<string, number>,
+  findingCounts: ReadonlyMap<string, number>,
+): readonly string[] {
+  const lines: string[] = [];
+  lines.push(`## ${heading}`, "");
+  lines.push(`| ${columnLabel} | Allocated Items | Findings |`);
+  lines.push("| --- | --- | --- |");
+  for (const key of keys) {
+    lines.push(
+      `| ${escapePipe(key)} | ${itemCounts.get(key) ?? 0} | ${findingCounts.get(key) ?? 0} |`,
+    );
+  }
+  lines.push("");
+  return lines;
+}
+
+function buildFindingsByDestination(
+  pairs: readonly FindingAllocationPair[],
+  allItems: readonly PersistedAllocationItem[],
+): readonly string[] {
+  const keyFn = (i: PersistedAllocationItem): string =>
+    i.recommendedDestination;
+  const itemCounts = countByKey(allItems, keyFn);
+  const findingCounts = countFindingsByKey(pairs, keyFn);
+  const allKeys = [...new Set([...itemCounts.keys(), ...findingCounts.keys()])];
+  return buildItemFindingsTable(
+    "Findings by Allocation Destination",
+    "Destination",
+    allKeys,
+    itemCounts,
+    findingCounts,
+  );
+}
+
+function buildFindingsByConfidenceBucket(
+  pairs: readonly FindingAllocationPair[],
+  allItems: readonly PersistedAllocationItem[],
+): readonly string[] {
+  const keyFn = (i: PersistedAllocationItem): ConfidenceBucket =>
+    toConfidenceBucket(i.confidence);
+  const itemCounts = countByKey(allItems, keyFn);
+  const findingCounts = countFindingsByKey(pairs, keyFn);
+  const buckets: readonly ConfidenceBucket[] = ["high", "medium", "low"];
+  return buildItemFindingsTable(
+    "Findings by Confidence Bucket",
+    "Confidence",
+    buckets,
+    itemCounts,
+    findingCounts,
+  );
+}
+
+function buildFindingsByGapAspect(
+  pairs: readonly FindingAllocationPair[],
+): readonly string[] {
+  const lines: string[] = [];
+  lines.push("## Findings by Gap Aspect", "");
+
+  // Count findings per gap aspect (from matched allocation items' sourceSignals)
+  const findingCountByAspect = new Map<string, number>();
+  for (const { matchedItems } of pairs) {
+    const aspects = new Set(
+      matchedItems.flatMap((i) => i.sourceSignals.gapAspects),
+    );
+    for (const aspect of aspects) {
+      const count = findingCountByAspect.get(aspect) ?? 0;
+      findingCountByAspect.set(aspect, count + 1);
+    }
+  }
+
+  if (findingCountByAspect.size === 0) {
+    lines.push("No gap aspects linked to findings.", "");
+    return lines;
+  }
+
+  lines.push("| Gap Aspect | Findings |");
+  lines.push("| --- | --- |");
+  const sorted = [...findingCountByAspect.entries()].sort(
+    (a, b) => b[1] - a[1],
+  );
+  for (const [aspect, count] of sorted) {
+    lines.push(`| ${escapePipe(aspect)} | ${count} |`);
+  }
+  lines.push("");
+
+  return lines;
+}
+
+function buildFindingsByCharter(
+  findings: readonly PersistedFinding[],
+  sessionById: ReadonlyMap<number, PersistedSession>,
+  sessionCharters: PersistedSessionCharters,
+): readonly string[] {
+  const lines: string[] = [];
+  lines.push("## Findings by Charter", "");
+
+  if (sessionCharters.charters.length === 0) {
+    lines.push("No charters generated.", "");
+    return lines;
+  }
+
+  // Count findings per charter index
+  const findingsByCharterIndex = new Map<number, number>();
+  for (const finding of findings) {
+    const session = sessionById.get(finding.sessionId);
+    if (!session) continue;
+    const count = findingsByCharterIndex.get(session.charterIndex) ?? 0;
+    findingsByCharterIndex.set(session.charterIndex, count + 1);
+  }
+
+  lines.push("| Charter | Frameworks | Findings |");
+  lines.push("| --- | --- | --- |");
+  for (let i = 0; i < sessionCharters.charters.length; i++) {
+    const charter = sessionCharters.charters[i];
+    const frameworks = charter.selectedFrameworks.join(", ") || "-";
+    const count = findingsByCharterIndex.get(i) ?? 0;
+    lines.push(
+      `| ${escapePipe(charter.title)} | ${escapePipe(frameworks)} | ${count} |`,
+    );
+  }
+  lines.push("");
+
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
 // Handover helpers
 // ---------------------------------------------------------------------------
 
@@ -500,7 +760,7 @@ function buildHandoverSummary(data: CollectedData): string {
     `${findings.length} finding(s)`,
     `${defects} defect(s)`,
     `${autoCandidates} automation candidate(s)`,
-    "5 artifact files exported",
+    "6 artifact files exported",
   ];
 
   return parts.join("; ");
@@ -522,6 +782,7 @@ function buildHandoverBody(
     `- Session Charters: \`${paths.sessionCharters}\``,
     `- Findings Report: \`${paths.findingsReport}\``,
     `- Automation Candidate Report: \`${paths.automationCandidateReport}\``,
+    `- Heuristic Feedback Report: \`${paths.heuristicFeedbackReport}\``,
     "",
   ];
 

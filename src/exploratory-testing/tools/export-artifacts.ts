@@ -640,7 +640,9 @@ function buildFindingsByDestination(
     i.recommendedDestination;
   const itemCounts = countByKey(allItems, keyFn);
   const findingCounts = countFindingsByKey(pairs, keyFn);
-  const allKeys = [...new Set([...itemCounts.keys(), ...findingCounts.keys()])];
+  const allKeys = [
+    ...new Set([...itemCounts.keys(), ...findingCounts.keys()]),
+  ].sort();
   return buildItemFindingsTable(
     "Findings by Allocation Destination",
     "Destination",
@@ -694,7 +696,7 @@ function buildFindingsByGapAspect(
   lines.push("| Gap Aspect | Findings |");
   lines.push("| --- | --- |");
   const sorted = [...findingCountByAspect.entries()].sort(
-    (a, b) => b[1] - a[1],
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
   );
   for (const [aspect, count] of sorted) {
     lines.push(`| ${escapePipe(aspect)} | ${count} |`);

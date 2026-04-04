@@ -173,12 +173,17 @@ git checkout -b issue-<number>-<short-slug>
 
 ## 現在の基盤状態
 
-Issue #7 完了時点:
+Workflow v2 マージ後の現状:
 
 - `config.json` のスキーマと相対パス解決が実装済み
 - `setup` / `db init` / `progress summary` / `progress handover` の CLI が存在
 - SQLite 初期化、WAL、`foreign_keys` 有効化が実装済み
 - workspace 初期化は冪等
+- 11-step workflow (`setup` → `export-artifacts`) が `workflow.ts` / progress / skills に反映済み
+- `allocate` CLI / repository / model / DB schema が実装済み
+- `handoff generate / publish / update / add-findings` が実装済み
+- `generate-charters` は allocation の `manual-exploration` items を入力にする
+- GitHub Issue を shared handoff の正本として扱う v2 運用へ移行済み
 
 ## Known Pitfalls
 

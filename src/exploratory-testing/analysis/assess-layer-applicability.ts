@@ -290,6 +290,14 @@ function assessVisualLayer(
     );
   }
 
+  if (signals.hasStaticAsset) {
+    return entry(
+      "visual",
+      "secondary",
+      "static asset / PDF の変更が含まれており、補助的に見た目の確認が有効です。",
+    );
+  }
+
   if (signals.hasUiSource) {
     return entry(
       "visual",
@@ -359,9 +367,14 @@ function entry(
 }
 
 function isUiSource(path: string): boolean {
+  const isUiExt = /\.(tsx|jsx|vue|css|scss|sass|less|styl)$/i.test(path);
+  const isUiDir =
+    /\/(components|views|pages|layouts|routes|screens|flows)\//i.test(path) &&
+    /\.[jt]sx?$/i.test(path);
+
   return (
-    /\.(tsx|jsx|vue|css|scss|sass|less|styl)$/i.test(path) ||
-    /\/(components|views|pages|layouts|routes|screens|flows)\//i.test(path)
+    isUiExt ||
+    isUiDir
   );
 }
 
@@ -372,9 +385,11 @@ function isUiComponentSource(path: string): boolean {
 }
 
 function isUiFlowSource(path: string): boolean {
+  const isFlowDir = /\/(pages|views|routes|screens|flows)\//i.test(path);
+  const hasFlowKeyword = /(?:checkout|login|signup|cart|profile)/i.test(path);
+
   return (
-    /\/(pages|views|routes|screens|flows)\//i.test(path) ||
-    /(?:checkout|login|signup|cart|profile)/i.test(path)
+    (isFlowDir || hasFlowKeyword) && isUiSource(path)
   );
 }
 

@@ -83,6 +83,22 @@ describe("assess-layer-applicability", () => {
     expect(result["manual-exploration"].status).toBe("secondary");
   });
 
+  it("marks visual as secondary when static assets are mixed with backend changes", () => {
+    const result = assessLayerApplicability({
+      changedFilePaths: [
+        "public/forms/tax-return.pdf",
+        "src/api/tax/submit-return.ts",
+      ],
+      fileAnalyses: [
+        fileAnalysis("src/api/tax/submit-return.ts", ["api", "async"]),
+      ],
+      allocationItems: [allocation("integration")],
+    });
+
+    expect(result["integration-service"].status).toBe("primary");
+    expect(result.visual.status).toBe("secondary");
+  });
+
   it("marks all layers as no-product-change for docs and tests only", () => {
     const result = assessLayerApplicability({
       changedFilePaths: ["README.md", "tests/unit/setup.test.ts"],
@@ -124,5 +140,16 @@ describe("assess-layer-applicability", () => {
     expect(result["integration-service"].status).toBe("secondary");
     expect(result["manual-exploration"].status).toBe("secondary");
     expect(result.visual.status).toBe("not-primary");
+  });
+
+  it("does not misclassify backend route files as ui-e2e flows from path keywords alone", () => {
+    const result = assessLayerApplicability({
+      changedFilePaths: ["src/api/checkout.ts"],
+      fileAnalyses: [fileAnalysis("src/api/checkout.ts", ["api"])],
+      allocationItems: [allocation("integration")],
+    });
+
+    expect(result["integration-service"].status).toBe("primary");
+    expect(result["ui-e2e"].status).toBe("not-primary");
   });
 });

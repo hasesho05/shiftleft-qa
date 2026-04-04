@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   findIntentContext,
+  initializeWorkspaceDatabase,
   saveIntentContext,
   savePrIntake,
 } from "../../src/exploratory-testing/db/workspace-repository";
@@ -145,5 +146,30 @@ describe("intent context repository", () => {
 
     const found = findIntentContext(databasePath, 999);
     expect(found).toBeNull();
+  });
+
+  it("self-heals when pr_intake_contexts table does not exist (legacy workspace)", async () => {
+    const workspace = await createTestWorkspace();
+    workspaces.push(workspace.root);
+    const result = await initializeWorkspace(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const { databasePath } = result;
+
+    // Simulate a legacy workspace by dropping the table
+    const { Database } = await import("bun:sqlite");
+    const db = new Database(databasePath);
+    db.exec("DROP TABLE IF EXISTS pr_intake_contexts");
+    db.close();
+
+    const prIntake = savePrIntake(databasePath, createSamplePrMetadata());
+    const context = createSampleIntentContext();
+
+    // Should not throw — saveIntentContext defensively creates the table
+    const saved = saveIntentContext(databasePath, prIntake.id, context);
+
+    expect(saved.changePurpose).toBe("feature");
+    expect(saved.extractionStatus).toBe("parsed");
   });
 });

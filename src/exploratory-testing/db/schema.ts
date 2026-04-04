@@ -1,3 +1,26 @@
+export const PR_INTAKE_CONTEXTS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS pr_intake_contexts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pr_intake_id INTEGER NOT NULL UNIQUE
+    REFERENCES pr_intakes(id)
+    ON DELETE CASCADE,
+  change_purpose TEXT
+    CHECK (change_purpose IS NULL OR change_purpose IN (
+      'feature', 'bugfix', 'refactor', 'config', 'docs', 'other'
+    )),
+  user_story TEXT,
+  acceptance_criteria_json TEXT NOT NULL DEFAULT '[]',
+  non_goals_json TEXT NOT NULL DEFAULT '[]',
+  target_users_json TEXT NOT NULL DEFAULT '[]',
+  notes_for_qa_json TEXT NOT NULL DEFAULT '[]',
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  extraction_status TEXT NOT NULL
+    CHECK (extraction_status IN ('empty', 'parsed', 'partial')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`;
+
 export const WORKSPACE_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS workflow_steps (
   step_name TEXT PRIMARY KEY,

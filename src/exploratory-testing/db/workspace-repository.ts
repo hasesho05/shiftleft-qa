@@ -77,7 +77,7 @@ import {
   testLayerSchema,
   testSummarySchema,
 } from "../models/test-mapping";
-import { WORKSPACE_SCHEMA_SQL } from "./schema";
+import { PR_INTAKE_CONTEXTS_TABLE_SQL, WORKSPACE_SCHEMA_SQL } from "./schema";
 
 export type WorkspaceStateRecord = {
   readonly configPath: string;
@@ -845,6 +845,10 @@ export function saveIntentContext(
   const timestamp = new Date().toISOString();
 
   try {
+    // Defensive: ensure table exists for pre-existing workspaces
+    // that were initialized before this feature was added.
+    database.exec(PR_INTAKE_CONTEXTS_TABLE_SQL);
+
     const persist = database.transaction(() => {
       database
         .query(

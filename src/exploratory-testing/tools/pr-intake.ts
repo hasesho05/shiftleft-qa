@@ -46,7 +46,7 @@ export async function runPrIntake(
   });
 
   let linkedIssueBodies: ReadonlyMap<number, string> | undefined;
-  if (metadata.linkedIssues.length > 0 && config.scmProvider === "github") {
+  if (metadata.linkedIssues.length > 0 && metadata.provider === "github") {
     const issueNumbers = parseLinkedIssueNumbers(metadata.linkedIssues);
     if (issueNumbers.length > 0) {
       try {

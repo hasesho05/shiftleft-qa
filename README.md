@@ -205,10 +205,8 @@ primary handoff は GitHub Issue です。
 
 - local DB / progress files は shared source of truth ではありません
 - GitHub Issue が QA handoff の正本です
-- handoff の checklist は confidence つきの探索仮説であり、観察結果で更新される前提です
 - この plugin の目的は manual exploration を増やすことではなく、manual に残る前に削ることです
 - exported artifacts は補助資料であり、運用の主役ではありません
-- PR 本文や関連 Issue に変更の目的・ユーザーストーリー・達成要件があれば、より良い allocation と handoff を作りやすくなります
 - 手動探索では checklist 消化よりも、推論しながら曖昧さを観察することを重視します
 
 ## 開発者向け

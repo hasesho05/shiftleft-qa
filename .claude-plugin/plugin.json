@@ -16,7 +16,7 @@
     {
       "name": "capabilities",
       "path": "skills/capabilities/SKILL.md",
-      "description": "Show scope, assumptions, and known limitations before starting."
+      "description": "shiftleft-qa の対応範囲、前提、非対応事項を案内する。"
     },
     {
       "name": "setup",

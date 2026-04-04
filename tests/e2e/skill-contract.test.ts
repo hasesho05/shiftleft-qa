@@ -17,7 +17,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { WORKFLOW_SKILLS } from "../../src/exploratory-testing/config/workflow";
 import {
@@ -71,6 +71,7 @@ import { createSampleAppPrMetadata } from "./fixtures/sample-app-pr";
 // ---------------------------------------------------------------------------
 
 type SkillPipelineResult = {
+  readonly workspace: TestWorkspace;
   readonly config: ResolvedPluginConfig;
   readonly databasePath: string;
   readonly prIntake: PrIntakeResult;
@@ -245,6 +246,7 @@ async function runSkillPipeline(
   });
 
   return {
+    workspace,
     config,
     databasePath,
     prIntake,
@@ -260,34 +262,21 @@ async function runSkillPipeline(
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// SC-1: Setup-only test (dedicated workspace, no full pipeline)
 // ---------------------------------------------------------------------------
 
-describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
-  const workspaces: string[] = [];
+describe("skill-contract: setup isolation", { timeout: 30_000 }, () => {
+  let workspace: TestWorkspace;
 
-  afterEach(async () => {
-    await Promise.all(workspaces.splice(0).map(cleanupTestWorkspace));
+  beforeAll(async () => {
+    workspace = await createTestWorkspaceWithSampleApp();
   });
 
-  async function setup(): Promise<{
-    workspace: TestWorkspace;
-    result: SkillPipelineResult;
-  }> {
-    const workspace = await createTestWorkspaceWithSampleApp();
-    workspaces.push(workspace.root);
-    const result = await runSkillPipeline(workspace);
-    return { workspace, result };
-  }
+  afterAll(async () => {
+    await cleanupTestWorkspace(workspace.root);
+  });
 
-  // -----------------------------------------------------------------------
-  // SC-1: Setup initialises progress, DB, and current step correctly
-  // -----------------------------------------------------------------------
   it("SC-1: setup produces correct initial state before any pipeline step runs", async () => {
-    // Dedicated workspace — only setup runs, no full pipeline
-    const workspace = await createTestWorkspaceWithSampleApp();
-    workspaces.push(workspace.root);
-
     const setupResult = await initializeWorkspace(
       workspace.configPath,
       workspace.manifestPath,
@@ -322,12 +311,28 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
     );
     expect(pendingSnapshots).toHaveLength(WORKFLOW_SKILLS.length - 1);
   });
+});
+
+// ---------------------------------------------------------------------------
+// SC-2 – SC-11: Full pipeline tests (shared workspace via beforeAll)
+// ---------------------------------------------------------------------------
+
+describe("skill-contract: full pipeline", { timeout: 30_000 }, () => {
+  let result: SkillPipelineResult;
+
+  beforeAll(async () => {
+    const workspace = await createTestWorkspaceWithSampleApp();
+    result = await runSkillPipeline(workspace);
+  }, 30_000);
+
+  afterAll(async () => {
+    await cleanupTestWorkspace(result.workspace.root);
+  });
 
   // -----------------------------------------------------------------------
   // SC-2: Step transitions follow workflow definition order
   // -----------------------------------------------------------------------
   it("SC-2: handover files follow workflow step order and reference correct next step", async () => {
-    const { result, workspace } = await setup();
     const snapshots = listStepProgressSnapshots(result.databasePath);
 
     // All 11 workflow steps have snapshots
@@ -347,7 +352,7 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
         continue;
       }
 
-      const filePath = resolve(workspace.root, snapshot.progressPath);
+      const filePath = resolve(result.workspace.root, snapshot.progressPath);
       const doc = await readStepHandoverDocument(filePath);
 
       const stepIndex = WORKFLOW_SKILLS.findIndex(
@@ -362,7 +367,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // SC-3: Handover/progress files serve as skill re-entry material
   // -----------------------------------------------------------------------
   it("SC-3: handover files contain non-empty summary suitable for skill re-entry", async () => {
-    const { result, workspace } = await setup();
     const snapshots = listStepProgressSnapshots(result.databasePath);
     const completedSnapshots = snapshots.filter(
       (s) => s.status === "completed" && s.progressPath,
@@ -387,7 +391,7 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
       if (!snapshot.progressPath) {
         throw new Error(`${snapshot.stepName} has no progressPath`);
       }
-      const filePath = resolve(workspace.root, snapshot.progressPath);
+      const filePath = resolve(result.workspace.root, snapshot.progressPath);
       const doc = await readStepHandoverDocument(filePath);
       expect(doc.frontmatter.status).toBe("completed");
       expect(doc.frontmatter.step_name).toBe(snapshot.stepName);
@@ -399,7 +403,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // SC-4: Intent context from pr-intake propagates to downstream steps
   // -----------------------------------------------------------------------
   it("SC-4: pr-intake extracts intent context and it persists in DB", async () => {
-    const { result } = await setup();
     const intentContext = findIntentContext(
       result.databasePath,
       result.prIntake.persisted.id,
@@ -421,7 +424,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
     ).toBeGreaterThan(0);
 
     // Intent context should be available for export-artifacts
-    // (verified indirectly: the exploration brief includes intent context)
     const brief = await readFile(
       result.exportResult.artifacts.explorationBrief,
       "utf8",
@@ -432,14 +434,11 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // -----------------------------------------------------------------------
   // SC-5: Charters are driven by manual-exploration items
   // -----------------------------------------------------------------------
-  it("SC-5: charters are generated and overlap with manual-exploration items", async () => {
-    const { result } = await setup();
+  it("SC-5: charters are generated and overlap with manual-exploration items", () => {
     const { charters, assess } = result;
 
-    // Charters must exist
     expect(charters.persisted.charters.length).toBeGreaterThan(0);
 
-    // Manual-exploration items exist (some items remain for manual exploration)
     const manualItems = listAllocationItemsByDestination(
       result.databasePath,
       assess.persisted.id,
@@ -450,10 +449,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
       "Should have manual-exploration items to drive charters",
     ).toBeGreaterThan(0);
 
-    // Charter scope overlaps with manual-exploration file paths.
-    // Note: charter scope comes from exploration themes' targetFiles, which
-    // may include files beyond the strict manual-exploration allocation set
-    // (themes are filtered by overlap, not intersection).
     const manualFilePaths = new Set(
       manualItems.flatMap((item) => item.changedFilePaths),
     );
@@ -473,19 +468,16 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // -----------------------------------------------------------------------
   // SC-6: Allocation produces confidence-based items across destinations
   // -----------------------------------------------------------------------
-  it("SC-6: allocation items carry confidence and distribute across multiple destinations", async () => {
-    const { result } = await setup();
+  it("SC-6: allocation items carry confidence and distribute across multiple destinations", () => {
     const { items, destinationCounts } = result.allocate;
 
     expect(items.length).toBeGreaterThan(0);
 
-    // Items have confidence values
     for (const item of items) {
       expect(item.confidence).toBeGreaterThan(0);
       expect(item.confidence).toBeLessThanOrEqual(1);
     }
 
-    // Multiple destination types should be populated
     const populatedDestinations = Object.entries(destinationCounts).filter(
       ([, count]) => count > 0,
     );
@@ -494,7 +486,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
       "Should allocate to at least 3 distinct destinations",
     ).toBeGreaterThanOrEqual(3);
 
-    // Verify that items carry hypothesis-relevant metadata
     for (const item of items) {
       expect(item.rationale).toBeTruthy();
       expect(item.sourceSignals).toBeTruthy();
@@ -505,11 +496,9 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // -----------------------------------------------------------------------
   // SC-7: Handoff output carries confidence-based hypothesis
   // -----------------------------------------------------------------------
-  it("SC-7: handoff markdown contains confidence badges, sections, and hypothesis caveat", async () => {
-    const { result } = await setup();
+  it("SC-7: handoff markdown contains confidence badges, sections, and hypothesis caveat", () => {
     const { markdown, sections, summary } = result.handoffMarkdown;
 
-    // Markdown is non-empty
     expect(markdown.length).toBeGreaterThan(100);
 
     // Contains the three handoff sections
@@ -556,7 +545,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // SC-8: Export artifacts include guarantee-oriented layer summary
   // -----------------------------------------------------------------------
   it("SC-8: exploration brief contains guarantee-oriented layer summary", async () => {
-    const { result } = await setup();
     const brief = await readFile(
       result.exportResult.artifacts.explorationBrief,
       "utf8",
@@ -564,8 +552,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
 
     expect(brief).toContain("Guarantee-Oriented Layer Summary");
 
-    // Layer summary should have at least one guarantee bucket with content
-    // (unit, integration, UI/E2E, or manual-exploration)
     const hasBucket =
       brief.includes("単体テストで保証したいこと") ||
       brief.includes("統合テスト") ||
@@ -580,7 +566,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // SC-9: Export artifacts include heuristic feedback report
   // -----------------------------------------------------------------------
   it("SC-9: heuristic feedback report is generated with findings correlation", async () => {
-    const { result } = await setup();
     const report = await readFile(
       result.exportResult.artifacts.heuristicFeedbackReport,
       "utf8",
@@ -589,8 +574,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
     expect(report).toContain("Heuristic Feedback Report");
     expect(report).toContain("Total findings");
     expect(report).toContain("Total allocation items");
-
-    // Report should correlate findings with allocation destinations
     expect(report).toContain("Findings by Allocation Destination");
   });
 
@@ -598,7 +581,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // SC-10: All 6 artifact files are generated
   // -----------------------------------------------------------------------
   it("SC-10: export-artifacts produces all 6 artifact files", async () => {
-    const { result } = await setup();
     const { artifacts } = result.exportResult;
 
     const artifactPaths = [
@@ -610,7 +592,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
       artifacts.heuristicFeedbackReport,
     ];
 
-    // All files exist and have non-trivial content
     const contents = await Promise.all(
       artifactPaths.map((path) => readFile(path, "utf8")),
     );
@@ -627,7 +608,6 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
   // SC-11: PR data and findings flow through to exported artifacts
   // -----------------------------------------------------------------------
   it("SC-11: exported artifacts reference PR data, session findings, and intent context", async () => {
-    const { result } = await setup();
     const { artifacts } = result.exportResult;
 
     const [brief, findingsReport, automationReport] = await Promise.all([
@@ -636,17 +616,14 @@ describe("skill-contract E2E workflow", { timeout: 30_000 }, () => {
       readFile(artifacts.automationCandidateReport, "utf8"),
     ]);
 
-    // Brief references the sample app PR
     expect(brief).toContain("#55");
     expect(brief).toContain("task-board");
 
-    // Findings report includes the defect from the session
     expect(findingsReport).toContain("defect");
     expect(findingsReport).toContain(
       "State machine allows skipping intermediate states",
     );
 
-    // Automation candidate report includes the candidate
     expect(automationReport).toContain("unit");
     expect(automationReport).toContain(
       "Role-based transition guard is deterministic",

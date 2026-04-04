@@ -48,14 +48,12 @@ export async function createTestWorkspace(): Promise<TestWorkspace> {
           {
             name: "discover-context",
             path: "skills/discover-context/SKILL.md",
-            description:
-              "Analyze code and diff context before exploration.",
+            description: "Analyze code and diff context before exploration.",
           },
           {
             name: "map-tests",
             path: "skills/map-tests/SKILL.md",
-            description:
-              "Map related automated tests and summarize coverage.",
+            description: "Map related automated tests and summarize coverage.",
           },
           {
             name: "assess-gaps",
@@ -66,8 +64,7 @@ export async function createTestWorkspace(): Promise<TestWorkspace> {
           {
             name: "allocate",
             path: "skills/allocate/SKILL.md",
-            description:
-              "Allocate coverage gaps to testing destinations.",
+            description: "Allocate coverage gaps to testing destinations.",
           },
           {
             name: "handoff",

@@ -1,3 +1,77 @@
+export type ExternalCommandFailureReason =
+  | "timeout"
+  | "command-not-found"
+  | "auth-failure"
+  | "network"
+  | "unknown";
+
+const AUTH_PATTERNS = [
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+  "gh auth login",
+  "glab auth login",
+  "authentication",
+  "401 Unauthorized",
+  "403 Forbidden",
+] as const;
+
+const NETWORK_PATTERNS = [
+  "Could not resolve host",
+  "connection refused",
+  "Connection refused",
+  "network is unreachable",
+  "SSL certificate",
+  "SSL_ERROR",
+  "ETIMEDOUT",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "Failed to connect",
+] as const;
+
+export function classifyExternalCommandError(
+  error: unknown,
+): ExternalCommandFailureReason {
+  const parsed = getExecaErrorLike(error);
+  if (!parsed) {
+    return "unknown";
+  }
+
+  if (parsed.timedOut === true) {
+    return "timeout";
+  }
+
+  if (parsed.exitCode === 127) {
+    return "command-not-found";
+  }
+
+  const messageText = [parsed.stderr, parsed.message, parsed.shortMessage]
+    .filter(Boolean)
+    .join(" ");
+  const lowerMessage = messageText.toLowerCase();
+
+  if (messageText.includes("ENOENT")) {
+    return "command-not-found";
+  }
+
+  if (
+    AUTH_PATTERNS.some((pattern) =>
+      lowerMessage.includes(pattern.toLowerCase()),
+    )
+  ) {
+    return "auth-failure";
+  }
+
+  if (
+    NETWORK_PATTERNS.some((pattern) =>
+      lowerMessage.includes(pattern.toLowerCase()),
+    )
+  ) {
+    return "network";
+  }
+
+  return "unknown";
+}
+
 type ExecaErrorLike = {
   readonly shortMessage?: string;
   readonly stderr?: string;
@@ -115,4 +189,20 @@ export function normalizeExecaError(
   }
 
   return `${commandText} の実行に失敗しました (${suffixParts.join("; ")})`;
+}
+
+export type NormalizedExternalCommandError = {
+  readonly reason: ExternalCommandFailureReason;
+  readonly message: string;
+};
+
+export function normalizeExecaErrorWithReason(
+  error: unknown,
+  context?: ExecaErrorContext,
+  fallbackMessage = "外部コマンドの実行に失敗しました",
+): NormalizedExternalCommandError {
+  return {
+    reason: classifyExternalCommandError(error),
+    message: normalizeExecaError(error, context, fallbackMessage),
+  };
 }

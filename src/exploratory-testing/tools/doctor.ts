@@ -1,5 +1,14 @@
 import { spawnSync } from "node:child_process";
 
+import {
+  type DivergenceEntry,
+  type StaleStepInfo,
+  detectAllStaleSteps,
+  detectProgressDivergence,
+  getDatabasePragmas,
+} from "../db/workspace-repository";
+import type { ResolvedPluginConfig } from "../models/config";
+
 export type ToolStatus = "ok" | "missing";
 
 export interface ToolCheck {
@@ -17,19 +26,18 @@ export interface EnvironmentReport {
   tools: ToolCheck[];
 }
 
+const SPAWN_TIMEOUT_MS = 5_000;
+
 function detectVersion(
   commandName: string,
   versionArgs: string[] = ["--version"],
 ): string | null {
-  if (!isCommandAvailable(commandName)) {
-    return null;
-  }
-
   const result = spawnSync(commandName, versionArgs, {
     encoding: "utf8",
+    timeout: SPAWN_TIMEOUT_MS,
   });
 
-  if (result.status !== 0) {
+  if (result.error || result.status !== 0) {
     return null;
   }
 
@@ -44,37 +52,32 @@ export function getToolStatus(tool: ToolCheck): ToolStatus {
 function isCommandAvailable(commandName: string): boolean {
   const result = spawnSync("which", [commandName], {
     encoding: "utf8",
+    timeout: SPAWN_TIMEOUT_MS,
   });
 
-  return result.status === 0;
+  return result.status === 0 && !result.error;
+}
+
+function buildToolCheck(
+  name: string,
+  required: boolean,
+  versionArgs: string[] = ["--version"],
+): ToolCheck {
+  const detected = isCommandAvailable(name);
+  return {
+    name,
+    required,
+    detected,
+    version: detected ? detectVersion(name, versionArgs) : null,
+  };
 }
 
 export function createEnvironmentReport(): EnvironmentReport {
   const tools: ToolCheck[] = [
-    {
-      name: "gh",
-      required: true,
-      detected: isCommandAvailable("gh"),
-      version: detectVersion("gh", ["--version"]),
-    },
-    {
-      name: "git",
-      required: true,
-      detected: isCommandAvailable("git"),
-      version: detectVersion("git", ["--version"]),
-    },
-    {
-      name: "sqlite3",
-      required: false,
-      detected: isCommandAvailable("sqlite3"),
-      version: detectVersion("sqlite3", ["--version"]),
-    },
-    {
-      name: "glab",
-      required: false,
-      detected: isCommandAvailable("glab"),
-      version: detectVersion("glab", ["--version"]),
-    },
+    buildToolCheck("gh", true),
+    buildToolCheck("git", true),
+    buildToolCheck("sqlite3", false),
+    buildToolCheck("glab", false),
   ];
 
   return {
@@ -83,5 +86,43 @@ export function createEnvironmentReport(): EnvironmentReport {
       nodeVersion: process.versions.node ?? null,
     },
     tools,
+  };
+}
+
+// --- Workspace health check ---
+
+export type WorkspaceHealthReport = {
+  readonly databaseAccessible: boolean;
+  readonly divergences: readonly DivergenceEntry[];
+  readonly staleSteps: readonly StaleStepInfo[];
+};
+
+export async function checkWorkspaceHealth(
+  config: ResolvedPluginConfig,
+): Promise<WorkspaceHealthReport> {
+  let databaseAccessible = false;
+
+  try {
+    getDatabasePragmas(config.paths.database);
+    databaseAccessible = true;
+  } catch {
+    return {
+      databaseAccessible: false,
+      divergences: [],
+      staleSteps: [],
+    };
+  }
+
+  const divergenceReport = await detectProgressDivergence(
+    config.paths.database,
+    config.workspaceRoot,
+  );
+
+  const staleSteps = detectAllStaleSteps(config.paths.database);
+
+  return {
+    databaseAccessible,
+    divergences: divergenceReport.divergences,
+    staleSteps,
   };
 }

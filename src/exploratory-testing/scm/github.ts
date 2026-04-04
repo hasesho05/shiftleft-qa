@@ -64,6 +64,12 @@ export const ghRepoViewSchema = schema(
   }),
 );
 
+export const ghIssueBodySchema = schema(
+  v.object({
+    body: v.optional(v.nullable(v.string()), null),
+  }),
+);
+
 // --- Data types ---
 
 export type GhPrData = {

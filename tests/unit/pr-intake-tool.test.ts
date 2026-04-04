@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { findPrIntake } from "../../src/exploratory-testing/db/workspace-repository";
+import {
+  findIntentContext,
+  findPrIntake,
+} from "../../src/exploratory-testing/db/workspace-repository";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import { savePrIntakeResult } from "../../src/exploratory-testing/tools/pr-intake";
@@ -96,6 +99,72 @@ describe("savePrIntakeResult", () => {
     expect(handoverDoc.frontmatter.step_name).toBe("pr-intake");
     expect(handoverDoc.frontmatter.status).toBe("completed");
     expect(handoverDoc.body).toContain("owner/repo#42");
+  });
+
+  it("extracts and saves intent context from PR description", async () => {
+    const workspace = await setupWorkspace();
+    const metadata: PrMetadata = {
+      ...createSampleMetadata(),
+      description: [
+        "## Purpose",
+        "Add a new dashboard feature",
+        "",
+        "## Acceptance Criteria",
+        "- Shows recent activity",
+        "- Loads in < 2s",
+        "",
+        "## Non-Goals",
+        "- Mobile support",
+        "",
+      ].join("\n"),
+    };
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const result = await savePrIntakeResult(
+      metadata,
+      config.paths.database,
+      config,
+    );
+
+    expect(result.intentContext).not.toBeNull();
+    expect(result.intentContext?.changePurpose).toBe("feature");
+    expect(result.intentContext?.acceptanceCriteria).toEqual([
+      "Shows recent activity",
+      "Loads in < 2s",
+    ]);
+    expect(result.intentContext?.nonGoals).toEqual(["Mobile support"]);
+
+    const dbContext = findIntentContext(
+      workspace.databasePath,
+      result.persisted.id,
+    );
+    expect(dbContext).not.toBeNull();
+    expect(dbContext?.changePurpose).toBe("feature");
+  });
+
+  it("saves empty intent context when no structured sections exist", async () => {
+    const workspace = await setupWorkspace();
+    const metadata: PrMetadata = {
+      ...createSampleMetadata(),
+      description: "Just a plain description with no sections",
+    };
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const result = await savePrIntakeResult(
+      metadata,
+      config.paths.database,
+      config,
+    );
+
+    expect(result.intentContext).not.toBeNull();
+    expect(result.intentContext?.extractionStatus).toBe("empty");
+    expect(result.intentContext?.changePurpose).toBeNull();
   });
 
   it("is idempotent for same PR", async () => {

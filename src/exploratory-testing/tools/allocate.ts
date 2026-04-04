@@ -678,12 +678,10 @@ function deriveAlternativeDestinations(
     return [];
   }
 
+  // Candidates are pushed in preference order: most specific first,
+  // manual-exploration last (weakest alternative).
   const candidates: AllocationDestination[] = [];
   const categories = new Set(fileAnalysis.categories.map((c) => c.category));
-
-  if (primary !== "manual-exploration" && gap.status !== "covered") {
-    candidates.push("manual-exploration");
-  }
 
   if (
     primary !== "review" &&
@@ -726,6 +724,11 @@ function deriveAlternativeDestinations(
     gap.aspect === "happy-path"
   ) {
     candidates.push("dev-box");
+  }
+
+  // manual-exploration is the weakest alternative: append last
+  if (primary !== "manual-exploration" && gap.status !== "covered") {
+    candidates.push("manual-exploration");
   }
 
   // manual-exploration fallback: always offer dev-box as a minimum alternative

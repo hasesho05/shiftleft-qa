@@ -1,8 +1,15 @@
 import {
+  LAYER_APPLICABILITY_LAYERS,
+  type LayerApplicabilityAssessment,
+  assessLayerApplicability,
+} from "../analysis/assess-layer-applicability";
+import {
   type PersistedAllocationItem,
+  type PersistedChangeAnalysis,
   type PersistedPrIntake,
   type PersistedSession,
   countAllocationItemsByDestination,
+  findChangeAnalysisById,
   findIntentContext,
   findPrIntakeById,
   findRiskAssessmentById,
@@ -105,6 +112,7 @@ export type AddHandoffCommentRawResult = {
 
 type HandoffContext = {
   readonly prIntake: PersistedPrIntake;
+  readonly changeAnalysis: PersistedChangeAnalysis;
   readonly items: readonly PersistedAllocationItem[];
   readonly counts: AllocationDestinationCounts;
   readonly intentContext: IntentContext | null;
@@ -116,6 +124,11 @@ export async function generateHandoffMarkdown(
   const context = await resolveHandoffContext(input);
   const sections = groupBySection(context.items);
   const summary = buildHandoffSummary(context.counts);
+  const applicability = assessLayerApplicability({
+    changedFilePaths: context.prIntake.changedFiles.map((file) => file.path),
+    fileAnalyses: context.changeAnalysis.fileAnalyses,
+    allocationItems: context.items,
+  });
 
   return {
     riskAssessmentId: input.riskAssessmentId,
@@ -123,7 +136,7 @@ export async function generateHandoffMarkdown(
     markdown: renderHandoffMarkdown(
       context.prIntake,
       input.riskAssessmentId,
-      { sections, summary },
+      { sections, summary, applicability },
       context.intentContext ?? undefined,
     ),
     sections,
@@ -252,6 +265,7 @@ export function renderHandoffMarkdown(
   input: {
     readonly sections: HandoffSections;
     readonly summary: HandoffSummary;
+    readonly applicability?: LayerApplicabilityAssessment;
   },
   intentContext?: IntentContext,
 ): string {
@@ -278,6 +292,9 @@ export function renderHandoffMarkdown(
     `- Already covered: ${input.summary.coveredCount}`,
     "",
     ...renderIntentContextSection(intentContext),
+    ...(input.applicability
+      ? renderLayerApplicabilitySection(input.applicability)
+      : []),
     "---",
     "",
     "### ✅ Already Covered",
@@ -353,6 +370,36 @@ function renderIntentContextSection(
     return [];
   }
   return [...base, "---", ""];
+}
+
+const APPLICABILITY_LABELS = {
+  primary: "primary",
+  secondary: "secondary",
+  "not-primary": "not-primary",
+  "no-product-change": "no-product-change",
+} as const;
+
+const LAYER_LABELS = {
+  unit: "unit",
+  "integration-service": "integration/service",
+  "ui-e2e": "ui/e2e",
+  visual: "visual",
+  "manual-exploration": "manual exploration",
+} as const;
+
+function renderLayerApplicabilitySection(
+  applicability: LayerApplicabilityAssessment,
+): readonly string[] {
+  const lines = ["### Layer Applicability", ""];
+
+  for (const layer of LAYER_APPLICABILITY_LAYERS) {
+    const entry = applicability[layer];
+    lines.push(
+      `- **${LAYER_LABELS[layer]}**: \`${APPLICABILITY_LABELS[entry.status]}\` — ${escapePipe(entry.reason)}`,
+    );
+  }
+
+  return [...lines, "", "---", ""];
 }
 
 const CONFIDENCE_ICONS: Record<ConfidenceBucket, string> = {
@@ -494,6 +541,17 @@ async function resolveHandoffContext(
     );
   }
 
+  const changeAnalysis = findChangeAnalysisById(
+    config.paths.database,
+    testMapping.changeAnalysisId,
+  );
+
+  if (!changeAnalysis) {
+    throw new Error(
+      `Change analysis not found for id=${testMapping.changeAnalysisId}.`,
+    );
+  }
+
   const prIntake = findPrIntakeById(
     config.paths.database,
     testMapping.prIntakeId,
@@ -516,6 +574,7 @@ async function resolveHandoffContext(
 
   return {
     prIntake,
+    changeAnalysis,
     items,
     counts,
     intentContext,

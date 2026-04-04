@@ -2,6 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import {
+  type LayerApplicabilityAssessment,
+  type LayerApplicabilityLayer,
+  assessLayerApplicability,
+} from "../analysis/assess-layer-applicability";
+import {
   type PersistedAllocationItem,
   type PersistedChangeAnalysis,
   type PersistedFinding,
@@ -295,6 +300,7 @@ type GuaranteeBucket = {
   readonly title: string;
   readonly destinations: readonly AllocationDestination[];
   readonly kind: "guarantee" | "manual";
+  readonly layer: LayerApplicabilityLayer;
 };
 
 const GUARANTEE_BUCKETS: readonly GuaranteeBucket[] = [
@@ -302,21 +308,31 @@ const GUARANTEE_BUCKETS: readonly GuaranteeBucket[] = [
     title: "単体テストで保証したいこと",
     destinations: ["unit"],
     kind: "guarantee",
+    layer: "unit",
   },
   {
     title: "統合テスト / サービステストで保証したいこと",
     destinations: ["integration"],
     kind: "guarantee",
+    layer: "integration-service",
   },
   {
     title: "UI / E2E テストで保証したいこと",
-    destinations: ["e2e", "visual"],
+    destinations: ["e2e"],
     kind: "guarantee",
+    layer: "ui-e2e",
+  },
+  {
+    title: "ビジュアルテストで保証したいこと",
+    destinations: ["visual"],
+    kind: "guarantee",
+    layer: "visual",
   },
   {
     title: "手動探索で見ること",
     destinations: ["manual-exploration"],
     kind: "manual",
+    layer: "manual-exploration",
   },
 ];
 
@@ -334,6 +350,11 @@ function buildGuaranteeLayerSummarySection(
 ): readonly string[] {
   const lines: string[] = [];
   lines.push("## Guarantee-Oriented Layer Summary", "");
+  const applicability = assessLayerApplicability({
+    changedFilePaths: data.prIntake.changedFiles.map((file) => file.path),
+    fileAnalyses: data.changeAnalysis.fileAnalyses,
+    allocationItems: data.allocationItems,
+  });
 
   const intentNote = buildGuaranteeIntentNote(data.intentContext);
   if (intentNote) {
@@ -348,7 +369,10 @@ function buildGuaranteeLayerSummarySection(
     lines.push(`### ${bucket.title}`, "");
 
     if (items.length === 0) {
-      lines.push("- この PR では主要な配分はありません。", "");
+      lines.push(
+        `- ${buildLayerApplicabilityEmptyState(applicability, bucket.layer)}`,
+        "",
+      );
       continue;
     }
 
@@ -362,6 +386,24 @@ function buildGuaranteeLayerSummarySection(
   }
 
   return lines;
+}
+
+function buildLayerApplicabilityEmptyState(
+  applicability: LayerApplicabilityAssessment,
+  layer: LayerApplicabilityLayer,
+): string {
+  const entry = applicability[layer];
+
+  switch (entry.status) {
+    case "primary":
+      return `今回の変更ではこの layer が意味を持ちますが、現時点で明確な allocation item はありません。理由: ${escapePipe(singleLine(entry.reason))}`;
+    case "secondary":
+      return `この layer は補助的には有効ですが、今回の主保証レイヤーではありません。理由: ${escapePipe(singleLine(entry.reason))}`;
+    case "not-primary":
+      return `今回の変更ではこの layer は主要対象ではありません。理由: ${escapePipe(singleLine(entry.reason))}`;
+    case "no-product-change":
+      return `この PR はプロダクト挙動を直接変える差分ではないため、この layer は対象外です。理由: ${escapePipe(singleLine(entry.reason))}`;
+  }
 }
 
 function buildGuaranteeIntentNote(

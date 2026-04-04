@@ -721,6 +721,180 @@ describe("export-artifacts tool", () => {
     );
   });
 
+  it("marks non-primary layers instead of inflating missing tests for frontend-only changes", async () => {
+    const workspace = await createTestWorkspace();
+    workspaces.push(workspace.root);
+    const init = await initializeWorkspace(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const prIntake = savePrIntake(init.databasePath, {
+      provider: "github",
+      repository: "owner/repo",
+      prNumber: 77,
+      title: "Refine button styles",
+      description: "Frontend-only component update",
+      author: "alice",
+      baseBranch: "main",
+      headBranch: "feature/button-refresh",
+      headSha: "def5678",
+      linkedIssues: [],
+      changedFiles: [
+        {
+          path: "src/components/Button.tsx",
+          status: "modified",
+          additions: 12,
+          deletions: 4,
+          previousPath: null,
+        },
+        {
+          path: "src/components/Button.test.tsx",
+          status: "modified",
+          additions: 8,
+          deletions: 0,
+          previousPath: null,
+        },
+        {
+          path: "src/components/Button.stories.tsx",
+          status: "modified",
+          additions: 6,
+          deletions: 1,
+          previousPath: null,
+        },
+      ],
+      reviewComments: [],
+      fetchedAt: "2026-04-05T00:00:00Z",
+    });
+    const changeAnalysis = saveChangeAnalysis(init.databasePath, {
+      prIntakeId: prIntake.id,
+      fileAnalyses: [
+        {
+          path: "src/components/Button.tsx",
+          status: "modified",
+          additions: 12,
+          deletions: 4,
+          categories: [
+            { category: "ui", confidence: 0.9, reason: "tsx component" },
+          ],
+        },
+      ],
+      relatedCodes: [],
+      viewpointSeeds: [],
+      summary: "frontend-only component change",
+      analyzedAt: "2026-04-05T00:00:00Z",
+    } satisfies ChangeAnalysisResult);
+    const testMapping = saveTestMapping(init.databasePath, {
+      prIntakeId: prIntake.id,
+      changeAnalysisId: changeAnalysis.id,
+      testAssets: [
+        {
+          path: "src/components/Button.test.tsx",
+          layer: "unit",
+          relatedTo: ["src/components/Button.tsx"],
+          confidence: 0.8,
+        },
+        {
+          path: "src/components/Button.stories.tsx",
+          layer: "storybook",
+          relatedTo: ["src/components/Button.tsx"],
+          confidence: 0.8,
+        },
+      ],
+      testSummaries: [
+        {
+          testAssetPath: "src/components/Button.test.tsx",
+          layer: "unit",
+          coveredAspects: ["happy-path", "boundary"],
+          coverageConfidence: "confirmed",
+          description: "Component unit checks",
+        },
+      ],
+      coverageGapMap: [
+        {
+          changedFilePath: "src/components/Button.tsx",
+          aspect: "error-path",
+          status: "partial",
+          coveredBy: ["src/components/Button.test.tsx"],
+          explorationPriority: "medium",
+        },
+      ],
+      missingLayers: ["e2e", "visual", "api"],
+      mappedAt: "2026-04-05T00:00:00Z",
+    } satisfies TestMappingResult);
+    const riskAssessment = saveRiskAssessment(init.databasePath, {
+      testMappingId: testMapping.id,
+      riskScores: [
+        {
+          changedFilePath: "src/components/Button.tsx",
+          overallRisk: 0.42,
+          factors: [{ factor: "ui-change", weight: 0.4, contribution: 0.17 }],
+        },
+      ],
+      frameworkSelections: [],
+      explorationThemes: [],
+      assessedAt: "2026-04-05T00:00:00Z",
+    } satisfies RiskAssessmentResult);
+    saveSessionCharters(init.databasePath, {
+      riskAssessmentId: riskAssessment.id,
+      charters: [],
+      generatedAt: "2026-04-05T00:00:00Z",
+    } satisfies SessionCharterGenerationResult);
+    saveAllocationItems(init.databasePath, riskAssessment.id, [
+      {
+        riskAssessmentId: riskAssessment.id,
+        title: "Button props and boundary handling",
+        changedFilePaths: ["src/components/Button.tsx"],
+        riskLevel: "medium",
+        recommendedDestination: "unit",
+        confidence: 0.81,
+        rationale:
+          "Local component behavior is deterministic enough for unit coverage",
+        sourceSignals: {
+          categories: ["ui"],
+          existingTestLayers: ["unit", "storybook"],
+          gapAspects: ["boundary"],
+          reviewComments: [],
+          riskSignals: [],
+        },
+      },
+      {
+        riskAssessmentId: riskAssessment.id,
+        title: "Button rendering update",
+        changedFilePaths: ["src/components/Button.tsx"],
+        riskLevel: "medium",
+        recommendedDestination: "visual",
+        confidence: 0.79,
+        rationale: "Rendering changes should be checked visually",
+        sourceSignals: {
+          categories: ["ui"],
+          existingTestLayers: ["unit", "storybook"],
+          gapAspects: ["happy-path"],
+          reviewComments: [],
+          riskSignals: [],
+        },
+      },
+    ]);
+
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const result = await exportArtifacts({ prIntakeId: prIntake.id, config });
+    const content = await readFile(result.artifacts.explorationBrief, "utf8");
+
+    expect(content).toContain(
+      "### 統合テスト / サービステストで保証したいこと",
+    );
+    expect(content).toContain(
+      "今回の変更ではこの layer は主要対象ではありません",
+    );
+    expect(content).toContain(
+      "差分は UI / asset 中心で、service boundary を跨ぐ変更 signal は強くありません",
+    );
+    expect(content).toContain("### ビジュアルテストで保証したいこと");
+  });
+
   describe("heuristic feedback report", () => {
     async function setupWithAllocations(): Promise<
       TestWorkspace & {

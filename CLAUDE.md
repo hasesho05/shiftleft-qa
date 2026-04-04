@@ -154,6 +154,31 @@ Hard rules:
 - DB は直接触らず CLI / repository module 経由
 - deterministic な処理を優先し LLM 依存ロジックを深い層に入れない
 
+### ドキュメント責務の分離
+
+- `skills/*/SKILL.md` は workflow の入口・再開方法・読み方を示す運用文書であり、複雑な判定ルールの唯一の正本にしない
+- cross-cutting な設計意図、判定原則、誤りやすい解釈は `AGENTS.md` / `CLAUDE.md` / `requirements.md` に残す
+- 実装で JSON 契約や出力意味が変わる場合は `SKILL.md` を更新するが、skill が file-local で吸収しづらい設計判断まで押し込まない
+
+### Layer applicability 原則
+
+- `test がない` と `今回の変更でその layer が主要対象ではない` を区別する
+- output / handoff / artifact では、layer 不在をそのまま gap や manual exploration 必須と読める形にしない
+- 少なくとも次の状態を区別して扱う
+  - `primary`
+  - `secondary`
+  - `not-primary`
+  - `no-product-change`
+- frontend-only component change、backend-only change、static asset / PDF replacement、docs/test only change、mixed change のような代表ケースを deterministic に説明できるようにする
+- `missingLayers` は repository 全体の test asset 不在を示す信号ではあるが、今回の PR でその layer が主要対象かどうかの最終判断には使いすぎない
+
+### 手動探索を膨らませない
+
+- manual exploration は「自動テスト layer が存在しないから行く場所」ではない
+- manual exploration に残すのは、曖昧さ・状態依存・横断的リスク・観察価値が deterministic layer に落とし切れない残余である
+- non-primary layer の不在を manual exploration の理由に使わない
+- 特に frontend-only diff で integration/service 不在、backend-only diff で visual 不在、asset replacement で unit/integration 不在を、そのまま QA gap として扱わない
+
 ## Issue 作業の開始手順
 
 1. 対象の GitHub Issue を読む

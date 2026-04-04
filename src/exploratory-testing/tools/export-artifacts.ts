@@ -374,16 +374,20 @@ function buildGuaranteeIntentNote(
   const parts: string[] = [];
 
   if (intentContext.changePurpose) {
-    parts.push(`変更目的: ${intentContext.changePurpose}`);
+    parts.push(
+      `変更目的: ${escapePipe(singleLine(intentContext.changePurpose))}`,
+    );
   }
   if (intentContext.userStory) {
-    parts.push(`ユーザーストーリー: ${singleLine(intentContext.userStory)}`);
+    parts.push(
+      `ユーザーストーリー: ${escapePipe(singleLine(intentContext.userStory))}`,
+    );
   }
   if (intentContext.acceptanceCriteria.length > 0) {
     parts.push(
       `達成要件: ${intentContext.acceptanceCriteria
         .slice(0, 2)
-        .map(singleLine)
+        .map((c) => escapePipe(singleLine(c)))
         .join(" / ")}`,
     );
   }
@@ -407,17 +411,20 @@ function buildGuaranteeLayerBullet(
 
   if (kind === "manual") {
     const manualReason =
-      item.sourceSignals.manualRemainder ??
-      firstNonEmpty(item.sourceSignals.openQuestions) ??
-      item.sourceSignals.reasoningSummary ??
-      item.rationale;
+      firstNonEmpty([
+        item.sourceSignals.manualRemainder ?? "",
+        ...(item.sourceSignals.openQuestions ?? []),
+        item.sourceSignals.reasoningSummary ?? "",
+        item.rationale,
+      ]) ?? item.rationale;
     return `${pathLabel}: ${guaranteeTarget}。根拠: ${basis}。手動探索に残す理由: ${escapePipe(singleLine(manualReason))}`;
   }
 
   const whyThisLayer =
-    item.sourceSignals.reasoningSummary ??
-    item.rationale ??
-    "deterministic に保証しやすいため";
+    firstNonEmpty([
+      item.sourceSignals.reasoningSummary ?? "",
+      item.rationale,
+    ]) ?? item.rationale;
 
   return `${pathLabel}: ${guaranteeTarget}。根拠: ${basis}。この層に寄せる理由: ${escapePipe(singleLine(whyThisLayer))}`;
 }
@@ -427,7 +434,7 @@ function buildGuaranteeTarget(item: PersistedAllocationItem): string {
     item.sourceSignals.gapAspects.map(
       (aspect) => GAP_GUARANTEE_LABELS[aspect] ?? `${aspect} を確認すること`,
     ),
-  );
+  ).map(escapePipe);
 
   if (labels.length === 0) {
     return "この変更で期待する振る舞いが崩れないこと";

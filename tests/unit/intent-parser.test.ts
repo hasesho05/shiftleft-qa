@@ -51,6 +51,37 @@ describe("parseIntentContext", () => {
       const result = parseIntentContext([body]);
       expect(result.changePurpose).not.toBe("bugfix");
     });
+
+    it("returns null when purpose section has no matching keywords", () => {
+      const body = "## Purpose\nSome unrecognizable purpose text\n";
+      const result = parseIntentContext([body]);
+      expect(result.changePurpose).toBeNull();
+    });
+
+    it("extracts 'docs' from purpose text containing 'docs'", () => {
+      const body = "## Purpose\nUpdate docs for the new API\n";
+      const result = parseIntentContext([body]);
+      expect(result.changePurpose).toBe("docs");
+    });
+
+    it("extracts purpose from heading with trailing colon", () => {
+      const body = "## Purpose:\nAdd a new feature\n";
+      const result = parseIntentContext([body]);
+      expect(result.changePurpose).toBe("feature");
+    });
+
+    it("extracts purpose from heading with fullwidth colon", () => {
+      const body = "## 目的：\nバグ修正\n";
+      const result = parseIntentContext([body]);
+      expect(result.changePurpose).toBe("bugfix");
+    });
+
+    it("picks up later source purpose when first source has no match", () => {
+      const prBody = "## Purpose\nSomething unrecognizable\n";
+      const issueBody = "## Purpose\nFix the login bug\n";
+      const result = parseIntentContext([prBody, issueBody]);
+      expect(result.changePurpose).toBe("bugfix");
+    });
   });
 
   describe("userStory extraction", () => {
@@ -325,6 +356,23 @@ describe("parseIntentContext", () => {
         "Unchecked item",
         "Checked item",
       ]);
+    });
+
+    it("handles + bullet marker", () => {
+      const body = [
+        "## Acceptance Criteria",
+        "+ First item",
+        "+ Second item",
+        "",
+      ].join("\n");
+      const result = parseIntentContext([body]);
+      expect(result.acceptanceCriteria).toEqual(["First item", "Second item"]);
+    });
+
+    it("handles heading with trailing colon", () => {
+      const body = ["## Acceptance Criteria:", "- Item A", ""].join("\n");
+      const result = parseIntentContext([body]);
+      expect(result.acceptanceCriteria).toEqual(["Item A"]);
     });
   });
 

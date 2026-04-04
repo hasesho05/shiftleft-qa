@@ -31,7 +31,7 @@ const SECTION_HEADING_MAP: ReadonlyMap<string, SectionKey> = new Map([
 ]);
 
 const HEADING_REGEX = /^#{2,3}\s+(.+)$/;
-const BULLET_REGEX = /^[-*]\s+(?:\[[ x]\]\s+)?(.+)$/;
+const BULLET_REGEX = /^[-*+]\s+(?:\[[ x]\]\s+)?(.+)$/;
 const NUMBERED_REGEX = /^\d+\.\s+(.+)$/;
 
 type PurposeRule = {
@@ -51,7 +51,7 @@ const PURPOSE_RULES: readonly PurposeRule[] = [
   { pattern: /バグ/, purpose: "bugfix" },
   { pattern: /\brefactor\b/, purpose: "refactor" },
   { pattern: /リファクタ/, purpose: "refactor" },
-  { pattern: /\bdoc(umentation)?\b/, purpose: "docs" },
+  { pattern: /\bdoc(umentation|s)?\b/, purpose: "docs" },
   { pattern: /ドキュメント/, purpose: "docs" },
   { pattern: /\bconfig(uration)?\b/, purpose: "config" },
   { pattern: /設定/, purpose: "config" },
@@ -142,7 +142,10 @@ function extractSections(
   for (const line of lines) {
     const headingMatch = HEADING_REGEX.exec(line);
     if (headingMatch) {
-      const headingText = headingMatch[1].trim().toLowerCase();
+      const headingText = headingMatch[1]
+        .trim()
+        .replace(/\s*[:：]\s*$/, "")
+        .toLowerCase();
       const key = SECTION_HEADING_MAP.get(headingText);
       currentKey = key ?? null;
       continue;
@@ -191,7 +194,7 @@ function inferChangePurpose(lines: readonly string[]): ChangePurpose | null {
     }
   }
 
-  return "other";
+  return null;
 }
 
 function deriveExtractionStatus(fields: {

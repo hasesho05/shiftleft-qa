@@ -8,6 +8,7 @@ import {
   type PersistedRiskAssessment,
   type PersistedSessionCharters,
   findChangeAnalysis,
+  findIntentContext,
   findPrIntake,
   findRiskAssessment,
   findTestMapping,
@@ -17,6 +18,7 @@ import {
 } from "../db/workspace-repository";
 import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
+import type { IntentContext } from "../models/intent-context";
 import {
   DEFAULT_EXPLORATION_BUDGET_MINUTES,
   type DroppedItem,
@@ -120,12 +122,16 @@ export async function runGenerateCharters(
     "dev-box",
   );
 
+  const intentContext =
+    findIntentContext(config.paths.database, prIntake.id) ?? undefined;
+
   return runGenerateChartersFromAllocation(
     riskAssessment,
     manualItems,
     devBoxItems,
     testMapping.coverageGapMap,
     config,
+    intentContext,
   );
 }
 
@@ -135,6 +141,7 @@ export async function runGenerateChartersFromAllocation(
   devBoxItems: readonly PersistedAllocationItem[],
   coverageGapMap: readonly CoverageGapEntry[],
   config: ResolvedPluginConfig,
+  intentContext?: IntentContext,
 ): Promise<GenerateChartersResult> {
   const pruningInput: PruningInput = {
     manualItems,
@@ -158,6 +165,7 @@ export async function runGenerateChartersFromAllocation(
     riskAssessment.explorationThemes,
     coverageGapMap,
     pruningInput.budgetMinutes,
+    intentContext,
   );
 
   const allDropped = [...pruning.droppedItems, ...additionalDropped];
@@ -166,7 +174,11 @@ export async function runGenerateChartersFromAllocation(
     riskAssessment.explorationThemes,
     selectedItems,
   );
-  const charters = generateSessionCharters(filteredThemes, coverageGapMap);
+  const charters = generateSessionCharters(
+    filteredThemes,
+    coverageGapMap,
+    intentContext,
+  );
 
   const charterTotalMinutes = charters.reduce(
     (sum, c) => sum + c.timeboxMinutes,
@@ -243,6 +255,7 @@ function validateCharterBudget(
   themes: readonly ExplorationTheme[],
   coverageGapMap: readonly CoverageGapEntry[],
   budgetMinutes: number,
+  intentContext?: IntentContext,
 ): {
   items: readonly PersistedAllocationItem[];
   additionalDropped: readonly DroppedItem[];
@@ -268,7 +281,12 @@ function validateCharterBudget(
       continue;
     }
 
-    const currentTotal = computeCharterTotal(themes, current, coverageGapMap);
+    const currentTotal = computeCharterTotal(
+      themes,
+      current,
+      coverageGapMap,
+      intentContext,
+    );
 
     if (currentTotal <= budgetMinutes) {
       break;
@@ -285,6 +303,7 @@ function validateCharterBudget(
       themes,
       withoutCandidate,
       coverageGapMap,
+      intentContext,
     );
 
     if (totalAfter < currentTotal) {
@@ -308,9 +327,14 @@ function computeCharterTotal(
   themes: readonly ExplorationTheme[],
   items: readonly PersistedAllocationItem[],
   coverageGapMap: readonly CoverageGapEntry[],
+  intentContext?: IntentContext,
 ): number {
   const filtered = filterThemesByAllocation(themes, items);
-  const charters = generateSessionCharters(filtered, coverageGapMap);
+  const charters = generateSessionCharters(
+    filtered,
+    coverageGapMap,
+    intentContext,
+  );
   return charters.reduce((sum, c) => sum + c.timeboxMinutes, 0);
 }
 

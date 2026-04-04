@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   findChangeAnalysis,
+  saveIntentContext,
   savePrIntake,
 } from "../../src/exploratory-testing/db/workspace-repository";
+import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import { runDiscoverContextFromIntake } from "../../src/exploratory-testing/tools/discover-context";
@@ -238,5 +240,55 @@ describe("runDiscoverContextFromIntake", () => {
     const second = await runDiscoverContextFromIntake(prIntake, config);
 
     expect(first.persisted.id).toBe(second.persisted.id);
+  });
+
+  it("merges intent-derived seeds into viewpoint seeds when intent context exists", async () => {
+    const workspace = await setupWorkspace();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSampleMetadata(),
+    );
+
+    const intentContext: IntentContext = {
+      changePurpose: "feature",
+      userStory: "As an admin, I can manage user sessions",
+      acceptanceCriteria: ["Login form validates input"],
+      nonGoals: [],
+      targetUsers: ["admin", "viewer"],
+      notesForQa: [],
+      sourceRefs: [],
+      extractionStatus: "parsed",
+    };
+    saveIntentContext(workspace.databasePath, prIntake.id, intentContext);
+
+    const result = await runDiscoverContextFromIntake(prIntake, config);
+
+    // Should include intent-derived seeds in user-persona viewpoint
+    const personaSeeds = result.persisted.viewpointSeeds.find(
+      (v) => v.viewpoint === "user-persona",
+    );
+    expect(personaSeeds).toBeDefined();
+    expect(personaSeeds?.seeds.some((s) => s.includes("admin"))).toBe(true);
+  });
+
+  it("works normally without intent context", async () => {
+    const workspace = await setupWorkspace();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSampleMetadata(),
+    );
+
+    // No intent context saved — should still work
+    const result = await runDiscoverContextFromIntake(prIntake, config);
+
+    expect(result.persisted.viewpointSeeds).toHaveLength(5);
   });
 });

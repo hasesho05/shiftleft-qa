@@ -10,6 +10,7 @@ import {
   type PersistedSessionCharters,
   type PersistedTestMapping,
   findChangeAnalysis,
+  findIntentContext,
   findPrIntakeById,
   findRiskAssessment,
   findSessionCharters,
@@ -18,7 +19,9 @@ import {
   listSessionsByChartersId,
 } from "../db/workspace-repository";
 import { escapePipe } from "../lib/markdown";
+import { renderIntentContextLines } from "../lib/render-intent-context";
 import type { ResolvedPluginConfig } from "../models/config";
+import type { IntentContext } from "../models/intent-context";
 import {
   type StepHandoverWriteResult,
   writeStepHandoverFromConfig,
@@ -56,6 +59,7 @@ type CollectedData = {
   readonly sessionCharters: PersistedSessionCharters;
   readonly sessions: readonly PersistedSession[];
   readonly findings: readonly PersistedFinding[];
+  readonly intentContext: IntentContext | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -169,6 +173,8 @@ function collectData(
     findings.push(...sessionFindings);
   }
 
+  const intentContext = findIntentContext(databasePath, prIntake.id);
+
   return {
     prIntake,
     changeAnalysis,
@@ -177,6 +183,7 @@ function collectData(
     sessionCharters,
     sessions,
     findings,
+    intentContext,
   };
 }
 
@@ -185,7 +192,7 @@ function collectData(
 // ---------------------------------------------------------------------------
 
 function buildExplorationBrief(data: CollectedData): string {
-  const { prIntake, changeAnalysis, riskAssessment } = data;
+  const { prIntake, changeAnalysis, riskAssessment, intentContext } = data;
   const lines: string[] = [];
 
   lines.push("# Exploration Brief", "");
@@ -198,6 +205,8 @@ function buildExplorationBrief(data: CollectedData): string {
   if (prIntake.description) {
     lines.push("## Description", "", prIntake.description, "");
   }
+
+  lines.push(...buildIntentContextBriefSection(intentContext));
 
   lines.push("## Changed Files", "");
   lines.push("| Path | Status | +/- |");
@@ -258,6 +267,12 @@ function buildExplorationBrief(data: CollectedData): string {
   }
 
   return lines.join("\n");
+}
+
+function buildIntentContextBriefSection(
+  intentContext: IntentContext | null,
+): readonly string[] {
+  return renderIntentContextLines("## Intent Context", intentContext);
 }
 
 // ---------------------------------------------------------------------------

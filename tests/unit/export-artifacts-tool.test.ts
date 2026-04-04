@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   saveChangeAnalysis,
   saveFinding,
+  saveIntentContext,
   saveObservation,
   savePrIntake,
   saveRiskAssessment,
@@ -15,6 +16,7 @@ import {
   updateSessionStatus,
 } from "../../src/exploratory-testing/db/workspace-repository";
 import type { ChangeAnalysisResult } from "../../src/exploratory-testing/models/change-analysis";
+import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type { RiskAssessmentResult } from "../../src/exploratory-testing/models/risk-assessment";
 import type { SessionCharterGenerationResult } from "../../src/exploratory-testing/models/session-charter";
 import type { TestMappingResult } from "../../src/exploratory-testing/models/test-mapping";
@@ -513,5 +515,47 @@ describe("export-artifacts tool", () => {
     expect(findingsContent).not.toContain("LEAKED_FROM_OTHER_PR");
     // PR 2 charter NOT present
     expect(chartersContent).not.toContain("Other PR charter");
+  });
+
+  it("includes intent context in exploration brief when available", async () => {
+    const workspace = await setupWorkspaceWithFullPipeline();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const intent: IntentContext = {
+      changePurpose: "bugfix",
+      userStory: "As a user, I see correct error messages on login failure",
+      acceptanceCriteria: ["Error message shown for invalid password"],
+      nonGoals: ["No UI redesign"],
+      targetUsers: ["end-user"],
+      notesForQa: ["Test with expired tokens"],
+      sourceRefs: [],
+      extractionStatus: "parsed",
+    };
+    saveIntentContext(workspace.databasePath, 1, intent);
+
+    const result = await exportArtifacts({ prIntakeId: 1, config });
+    const content = await readFile(result.artifacts.explorationBrief, "utf8");
+
+    expect(content).toContain("## Intent Context");
+    expect(content).toContain("bugfix");
+    expect(content).toContain("correct error messages on login failure");
+    expect(content).toContain("Error message shown for invalid password");
+    expect(content).toContain("Test with expired tokens");
+  });
+
+  it("omits intent context section in brief when not available", async () => {
+    const workspace = await setupWorkspaceWithFullPipeline();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    const result = await exportArtifacts({ prIntakeId: 1, config });
+    const content = await readFile(result.artifacts.explorationBrief, "utf8");
+
+    expect(content).not.toContain("## Intent Context");
   });
 });

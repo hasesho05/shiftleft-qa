@@ -1,3 +1,4 @@
+import type { IntentContext } from "../models/intent-context";
 import type {
   ExplorationFramework,
   ExplorationTheme,
@@ -89,15 +90,17 @@ const ASPECT_OBSERVATION_HINTS: Record<CoverageAspect, string> = {
 export function generateSessionCharters(
   themes: readonly ExplorationTheme[],
   coverageGaps: readonly CoverageGapEntry[],
+  intentContext?: IntentContext,
 ): readonly SessionCharter[] {
   if (themes.length === 0) {
     return [];
   }
 
   const gapsByFile = indexGapsByFile(coverageGaps);
+  const enrichment = resolveCharterEnrichment(intentContext);
 
   const pairs = themes.map((theme) => ({
-    charter: buildCharter(theme, gapsByFile),
+    charter: buildCharter(theme, gapsByFile, enrichment),
     riskLevel: theme.riskLevel,
   }));
 
@@ -123,17 +126,27 @@ function getPrimaryFramework(theme: ExplorationTheme): ExplorationFramework {
 function buildCharter(
   theme: ExplorationTheme,
   gapsByFile: ReadonlyMap<string, readonly CoverageGapEntry[]>,
+  enrichment: CharterEnrichment | null,
 ): SessionCharter {
   const primaryFramework = getPrimaryFramework(theme);
   const relevantGaps = collectRelevantGaps(theme.targetFiles, gapsByFile);
 
+  const basePreconditions = buildPreconditions(theme);
+  const baseObservationTargets = buildObservationTargets(theme, relevantGaps);
+  const baseGoal = buildGoal(primaryFramework, theme, relevantGaps);
+
   return {
     title: theme.title,
-    goal: buildGoal(primaryFramework, theme, relevantGaps),
+    goal: enrichment?.goalSuffix
+      ? `${baseGoal}. ${enrichment.goalSuffix}`
+      : baseGoal,
     scope: [...theme.targetFiles],
     selectedFrameworks: [...theme.frameworks],
-    preconditions: [...buildPreconditions(theme)],
-    observationTargets: [...buildObservationTargets(theme, relevantGaps)],
+    preconditions: [...basePreconditions, ...(enrichment?.preconditions ?? [])],
+    observationTargets: [
+      ...baseObservationTargets,
+      ...(enrichment?.observationTargets ?? []),
+    ],
     stopConditions: [...buildStopConditions(theme, primaryFramework)],
     timeboxMinutes: theme.estimatedMinutes,
   };
@@ -291,4 +304,41 @@ function hasApiFiles(files: readonly string[]): boolean {
   return files.some((file) =>
     API_PATTERNS.some((pattern) => pattern.test(file)),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Intent context enrichment for charters
+// ---------------------------------------------------------------------------
+
+type CharterEnrichment = {
+  readonly goalSuffix: string | null;
+  readonly preconditions: readonly string[];
+  readonly observationTargets: readonly ObservationTarget[];
+};
+
+function resolveCharterEnrichment(
+  intentContext?: IntentContext,
+): CharterEnrichment | null {
+  if (!intentContext || intentContext.extractionStatus === "empty") {
+    return null;
+  }
+
+  const goalSuffix = intentContext.userStory
+    ? `PR context: ${intentContext.userStory}`
+    : null;
+
+  const preconditions: string[] = [];
+  for (const note of intentContext.notesForQa) {
+    preconditions.push(`QA note: ${note}`);
+  }
+
+  const observationTargets: ObservationTarget[] = [];
+  for (const criterion of intentContext.acceptanceCriteria) {
+    observationTargets.push({
+      category: "acceptance-criteria",
+      description: `Verify: ${criterion}`,
+    });
+  }
+
+  return { goalSuffix, preconditions, observationTargets };
 }

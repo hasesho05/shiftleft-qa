@@ -1,15 +1,20 @@
 import { classifyFileChange } from "../analysis/classify-file-change";
-import { extractViewpointSeeds } from "../analysis/extract-viewpoint-seeds";
+import {
+  extractIntentViewpointSeeds,
+  extractViewpointSeeds,
+} from "../analysis/extract-viewpoint-seeds";
 import { findRelatedCodeCandidates } from "../analysis/find-related-code";
 import {
   type PersistedChangeAnalysis,
   type PersistedPrIntake,
+  findIntentContext,
   findPrIntake,
   saveChangeAnalysis,
 } from "../db/workspace-repository";
 import type {
   ChangeAnalysisResult,
   FileChangeAnalysis,
+  ViewpointSeed,
 } from "../models/change-analysis";
 import type { ResolvedPluginConfig } from "../models/config";
 import { readPluginConfig } from "./config";
@@ -60,7 +65,14 @@ export async function runDiscoverContextFromIntake(
 ): Promise<DiscoverContextResult> {
   const fileAnalyses = analyzeFiles(prIntake);
   const relatedCodes = findRelatedCodeCandidates(prIntake.changedFiles);
-  const viewpointSeeds = extractViewpointSeeds(fileAnalyses);
+  const codeSeeds = extractViewpointSeeds(fileAnalyses);
+
+  const intentContext = findIntentContext(config.paths.database, prIntake.id);
+  const intentSeeds = intentContext
+    ? extractIntentViewpointSeeds(intentContext)
+    : [];
+  const viewpointSeeds = mergeViewpointSeeds(codeSeeds, intentSeeds);
+
   const summary = buildSummary(fileAnalyses, prIntake);
 
   const analysisResult: ChangeAnalysisResult = {
@@ -83,6 +95,28 @@ export async function runDiscoverContextFromIntake(
   });
 
   return { persisted, handover };
+}
+
+function mergeViewpointSeeds(
+  codeSeeds: readonly ViewpointSeed[],
+  intentSeeds: readonly ViewpointSeed[],
+): readonly ViewpointSeed[] {
+  if (intentSeeds.length === 0) {
+    return codeSeeds;
+  }
+
+  const intentMap = new Map(intentSeeds.map((s) => [s.viewpoint, s.seeds]));
+
+  return codeSeeds.map((seed) => {
+    const intentSeedsForViewpoint = intentMap.get(seed.viewpoint) ?? [];
+    if (intentSeedsForViewpoint.length === 0) {
+      return seed;
+    }
+    return {
+      viewpoint: seed.viewpoint,
+      seeds: [...seed.seeds, ...intentSeedsForViewpoint],
+    };
+  });
 }
 
 function analyzeFiles(

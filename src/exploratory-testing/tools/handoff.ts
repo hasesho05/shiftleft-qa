@@ -3,6 +3,7 @@ import {
   type PersistedPrIntake,
   type PersistedSession,
   countAllocationItemsByDestination,
+  findIntentContext,
   findPrIntakeById,
   findRiskAssessmentById,
   findSession,
@@ -11,6 +12,7 @@ import {
   listAllocationItems,
 } from "../db/workspace-repository";
 import { escapePipe } from "../lib/markdown";
+import { renderIntentContextLines } from "../lib/render-intent-context";
 import {
   type AllocationDestinationCounts,
   type ConfidenceBucket,
@@ -18,6 +20,7 @@ import {
 } from "../models/allocation";
 import type { ResolvedPluginConfig } from "../models/config";
 import type { CreatedComment, CreatedIssue } from "../models/github-issue";
+import type { IntentContext } from "../models/intent-context";
 import {
   type AddCommentInput,
   type CreateIssueInput,
@@ -104,6 +107,7 @@ type HandoffContext = {
   readonly prIntake: PersistedPrIntake;
   readonly items: readonly PersistedAllocationItem[];
   readonly counts: AllocationDestinationCounts;
+  readonly intentContext: IntentContext | null;
 };
 
 export async function generateHandoffMarkdown(
@@ -116,10 +120,12 @@ export async function generateHandoffMarkdown(
   return {
     riskAssessmentId: input.riskAssessmentId,
     repository: context.prIntake.repository,
-    markdown: renderHandoffMarkdown(context.prIntake, input.riskAssessmentId, {
-      sections,
-      summary,
-    }),
+    markdown: renderHandoffMarkdown(
+      context.prIntake,
+      input.riskAssessmentId,
+      { sections, summary },
+      context.intentContext ?? undefined,
+    ),
     sections,
     counts: context.counts,
     summary,
@@ -247,6 +253,7 @@ export function renderHandoffMarkdown(
     readonly sections: HandoffSections;
     readonly summary: HandoffSummary;
   },
+  intentContext?: IntentContext,
 ): string {
   const prUrl =
     prIntake.provider === "github"
@@ -270,6 +277,7 @@ export function renderHandoffMarkdown(
     `- Should automate: ${input.summary.automateCount}`,
     `- Already covered: ${input.summary.coveredCount}`,
     "",
+    ...renderIntentContextSection(intentContext),
     "---",
     "",
     "### ✅ Already Covered",
@@ -335,6 +343,16 @@ export function renderFindingsComment(
   }
 
   return lines.join("\n");
+}
+
+function renderIntentContextSection(
+  intentContext?: IntentContext,
+): readonly string[] {
+  const base = renderIntentContextLines("### PR Intent Context", intentContext);
+  if (base.length === 0) {
+    return [];
+  }
+  return [...base, "---", ""];
 }
 
 const CONFIDENCE_ICONS: Record<ConfidenceBucket, string> = {
@@ -494,10 +512,13 @@ async function resolveHandoffContext(
     input.riskAssessmentId,
   );
 
+  const intentContext = findIntentContext(config.paths.database, prIntake.id);
+
   return {
     prIntake,
     items,
     counts,
+    intentContext,
   };
 }
 

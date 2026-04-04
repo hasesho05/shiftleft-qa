@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { generateSessionCharters } from "../../src/exploratory-testing/analysis/generate-session-charters";
+import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type { ExplorationTheme } from "../../src/exploratory-testing/models/risk-assessment";
 import type { CoverageGapEntry } from "../../src/exploratory-testing/models/test-mapping";
 
@@ -195,5 +196,109 @@ describe("generateSessionCharters", () => {
     expect(charters[0].title).toBe("High risk");
     expect(charters[1].title).toBe("Medium risk");
     expect(charters[2].title).toBe("Low risk");
+  });
+
+  describe("with intent context", () => {
+    function makeIntent(overrides: Partial<IntentContext> = {}): IntentContext {
+      return {
+        changePurpose: null,
+        userStory: null,
+        acceptanceCriteria: [],
+        nonGoals: [],
+        targetUsers: [],
+        notesForQa: [],
+        sourceRefs: [],
+        extractionStatus: "empty",
+        ...overrides,
+      };
+    }
+
+    it("adds notesForQa to preconditions", () => {
+      const themes = [createTheme()];
+      const intent = makeIntent({
+        notesForQa: ["Requires test admin account"],
+        extractionStatus: "parsed",
+      });
+
+      const charters = generateSessionCharters(themes, [], intent);
+
+      expect(charters[0].preconditions).toContain(
+        "QA note: Requires test admin account",
+      );
+    });
+
+    it("adds acceptance criteria to observation targets", () => {
+      const themes = [createTheme()];
+      const intent = makeIntent({
+        acceptanceCriteria: ["Export button is visible on dashboard"],
+        extractionStatus: "parsed",
+      });
+
+      const charters = generateSessionCharters(themes, [], intent);
+
+      const acTargets = charters[0].observationTargets.filter(
+        (t) => t.category === "acceptance-criteria",
+      );
+      expect(acTargets.length).toBeGreaterThanOrEqual(1);
+      expect(acTargets[0].description).toContain("Export button is visible");
+    });
+
+    it("enriches goal with user story context", () => {
+      const themes = [createTheme()];
+      const intent = makeIntent({
+        userStory: "As an admin, I can export reports",
+        extractionStatus: "parsed",
+      });
+
+      const charters = generateSessionCharters(themes, [], intent);
+
+      expect(charters[0].goal).toContain("export reports");
+    });
+
+    it("does not enrich when extractionStatus is empty", () => {
+      const themes = [createTheme()];
+      const intent = makeIntent({
+        userStory: "Should be ignored",
+        notesForQa: ["Also ignored"],
+        extractionStatus: "empty",
+      });
+
+      const without = generateSessionCharters(themes, []);
+      const with_ = generateSessionCharters(themes, [], intent);
+
+      expect(without[0].goal).toBe(with_[0].goal);
+      expect(without[0].preconditions).toEqual(with_[0].preconditions);
+      expect(without[0].observationTargets).toEqual(
+        with_[0].observationTargets,
+      );
+    });
+
+    it("preserves existing preconditions and observation targets", () => {
+      const themes = [
+        createTheme({
+          targetFiles: ["src/components/LoginForm.tsx"],
+          frameworks: ["state-transition"],
+        }),
+      ];
+      const gaps: CoverageGapEntry[] = [
+        createGap({
+          changedFilePath: "src/components/LoginForm.tsx",
+          aspect: "error-path",
+          status: "uncovered",
+        }),
+      ];
+      const intent = makeIntent({
+        notesForQa: ["Check timeout scenario"],
+        extractionStatus: "parsed",
+      });
+
+      const charters = generateSessionCharters(themes, gaps, intent);
+
+      // Should have both framework-derived and intent-derived preconditions
+      expect(charters[0].preconditions.length).toBeGreaterThanOrEqual(2);
+      expect(charters[0].preconditions.some((p) => p.includes("timeout"))).toBe(
+        true,
+      );
+    });
   });
 });

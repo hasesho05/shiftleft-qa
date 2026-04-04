@@ -21,6 +21,7 @@ import {
 } from "../../src/exploratory-testing/db/workspace-repository";
 import type { AllocationItem } from "../../src/exploratory-testing/models/allocation";
 import type { ChangeAnalysisResult } from "../../src/exploratory-testing/models/change-analysis";
+import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
 import type { RiskAssessmentResult } from "../../src/exploratory-testing/models/risk-assessment";
 import type { SessionCharterGenerationResult } from "../../src/exploratory-testing/models/session-charter";
@@ -216,6 +217,7 @@ describe("handoff tool", () => {
   function seedHandoffPipeline(databasePath: string): {
     riskAssessmentId: number;
     sessionId: number;
+    prIntake: ReturnType<typeof savePrIntake>;
   } {
     const prIntake = savePrIntake(databasePath, createSamplePrMetadata());
     const changeAnalysis = saveChangeAnalysis(
@@ -317,6 +319,7 @@ describe("handoff tool", () => {
     return {
       riskAssessmentId: riskAssessment.id,
       sessionId: session.id,
+      prIntake,
     };
   }
 
@@ -500,6 +503,60 @@ describe("handoff tool", () => {
 
     // Manual section shows confidence
     expect(result.markdown).toMatch(/Retry timeout.*🔴 low/);
+  });
+
+  it("includes intent context section in markdown when available", async () => {
+    const workspace = await setupWorkspace();
+    const { prIntake } = seedHandoffPipeline(workspace.databasePath);
+
+    const intent: IntentContext = {
+      changePurpose: "bugfix",
+      userStory: "As a merchant, I see correct retry behavior",
+      acceptanceCriteria: ["Retry count shown in logs"],
+      nonGoals: ["No UI changes"],
+      targetUsers: ["merchant"],
+      notesForQa: ["Test with flaky network"],
+      sourceRefs: [],
+      extractionStatus: "parsed",
+    };
+
+    const sections = groupBySection([]);
+    const summary = {
+      totalItems: 0,
+      manualCount: 0,
+      automateCount: 0,
+      coveredCount: 0,
+    };
+
+    const markdown = renderHandoffMarkdown(
+      prIntake,
+      1,
+      { sections, summary },
+      intent,
+    );
+
+    expect(markdown).toContain("### PR Intent Context");
+    expect(markdown).toContain("bugfix");
+    expect(markdown).toContain("correct retry behavior");
+    expect(markdown).toContain("Retry count shown in logs");
+    expect(markdown).toContain("Test with flaky network");
+  });
+
+  it("omits intent context section when not provided", async () => {
+    const workspace = await setupWorkspace();
+    const { prIntake } = seedHandoffPipeline(workspace.databasePath);
+
+    const sections = groupBySection([]);
+    const summary = {
+      totalItems: 0,
+      manualCount: 0,
+      automateCount: 0,
+      coveredCount: 0,
+    };
+
+    const markdown = renderHandoffMarkdown(prIntake, 1, { sections, summary });
+
+    expect(markdown).not.toContain("### PR Intent Context");
   });
 
   it("builds destination counts consistent with the saved allocation data", async () => {

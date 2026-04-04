@@ -706,8 +706,7 @@ function deriveAlternativeDestinations(
 
   if (hasAnyCategory(categories, ["ui"])) {
     const preferred = isFlowPath(fileAnalysis.path) ? "e2e" : "visual";
-    const other: AllocationDestination =
-      preferred === "e2e" ? "visual" : "e2e";
+    const other: AllocationDestination = preferred === "e2e" ? "visual" : "e2e";
 
     if (primary !== preferred) {
       candidates.push(preferred);

@@ -11,6 +11,7 @@ export const observationCategorySchema = schema(
     "state",
     "accessibility",
     "performance",
+    "acceptance-criteria",
   ]),
 );
 

@@ -1,3 +1,4 @@
+import type { IntentContext } from "../models/intent-context";
 import type {
   ExplorationFramework,
   ExplorationTheme,
@@ -55,6 +56,7 @@ export function generateExplorationThemes(
   riskScores: readonly RiskScore[],
   frameworkSelections: readonly FrameworkSelection[],
   coverageGaps: readonly CoverageGapEntry[],
+  intentContext?: IntentContext,
 ): readonly ExplorationTheme[] {
   if (frameworkSelections.length === 0) {
     return [];
@@ -65,6 +67,7 @@ export function generateExplorationThemes(
     riskByFile.set(score.changedFilePath, score.overallRisk);
   }
 
+  const enrichment = buildIntentEnrichment(intentContext);
   const themes: ExplorationTheme[] = [];
 
   // One theme per framework selection
@@ -78,7 +81,7 @@ export function generateExplorationThemes(
 
     themes.push({
       title: `${label}: ${fileNames}`,
-      description: selection.reason,
+      description: enrichDescription(selection.reason, enrichment),
       frameworks: [selection.framework],
       targetFiles: [...selection.relevantFiles],
       riskLevel,
@@ -220,4 +223,68 @@ function deduplicateThemes(
   }
 
   return [...deduplicated.values()];
+}
+
+// ---------------------------------------------------------------------------
+// Intent context enrichment
+// ---------------------------------------------------------------------------
+
+type IntentEnrichment = {
+  readonly purposeAnnotation: string | null;
+  readonly userStoryNote: string | null;
+  readonly criteriaNote: string | null;
+};
+
+const PURPOSE_ANNOTATIONS: Partial<
+  Record<NonNullable<IntentContext["changePurpose"]>, string>
+> = {
+  bugfix: "This is a bugfix — pay attention to regression and error paths",
+  feature: "New feature — verify complete user flow",
+  refactor: "Refactor — verify behavior preservation",
+};
+
+function buildIntentEnrichment(
+  intentContext?: IntentContext,
+): IntentEnrichment | null {
+  if (!intentContext || intentContext.extractionStatus === "empty") {
+    return null;
+  }
+
+  const purposeAnnotation = intentContext.changePurpose
+    ? (PURPOSE_ANNOTATIONS[intentContext.changePurpose] ?? null)
+    : null;
+
+  const userStoryNote = intentContext.userStory
+    ? `PR context: ${intentContext.userStory}`
+    : null;
+
+  const criteriaNote =
+    intentContext.acceptanceCriteria.length > 0
+      ? `Acceptance criteria: ${intentContext.acceptanceCriteria.join("; ")}`
+      : null;
+
+  return { purposeAnnotation, userStoryNote, criteriaNote };
+}
+
+function enrichDescription(
+  baseDescription: string,
+  enrichment: IntentEnrichment | null,
+): string {
+  if (!enrichment) {
+    return baseDescription;
+  }
+
+  const parts = [baseDescription];
+
+  if (enrichment.purposeAnnotation) {
+    parts.push(enrichment.purposeAnnotation);
+  }
+  if (enrichment.userStoryNote) {
+    parts.push(enrichment.userStoryNote);
+  }
+  if (enrichment.criteriaNote) {
+    parts.push(enrichment.criteriaNote);
+  }
+
+  return parts.join(". ");
 }

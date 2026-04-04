@@ -23,6 +23,7 @@ import {
 import { escapePipe } from "../lib/markdown";
 import { renderIntentContextLines } from "../lib/render-intent-context";
 import {
+  type AllocationDestination,
   type ConfidenceBucket,
   toConfidenceBucket,
 } from "../models/allocation";
@@ -221,6 +222,7 @@ function buildExplorationBrief(data: CollectedData): string {
   }
 
   lines.push(...buildIntentContextBriefSection(intentContext));
+  lines.push(...buildGuaranteeLayerSummarySection(data));
 
   lines.push("## Changed Files", "");
   lines.push("| Path | Status | +/- |");
@@ -287,6 +289,207 @@ function buildIntentContextBriefSection(
   intentContext: IntentContext | null,
 ): readonly string[] {
   return renderIntentContextLines("## Intent Context", intentContext);
+}
+
+type GuaranteeBucket = {
+  readonly title: string;
+  readonly destinations: readonly AllocationDestination[];
+  readonly kind: "guarantee" | "manual";
+};
+
+const GUARANTEE_BUCKETS: readonly GuaranteeBucket[] = [
+  {
+    title: "単体テストで保証したいこと",
+    destinations: ["unit"],
+    kind: "guarantee",
+  },
+  {
+    title: "統合テスト / サービステストで保証したいこと",
+    destinations: ["integration"],
+    kind: "guarantee",
+  },
+  {
+    title: "UI / E2E テストで保証したいこと",
+    destinations: ["e2e", "visual"],
+    kind: "guarantee",
+  },
+  {
+    title: "手動探索で見ること",
+    destinations: ["manual-exploration"],
+    kind: "manual",
+  },
+];
+
+const GAP_GUARANTEE_LABELS: Record<string, string> = {
+  "happy-path": "正常系が成立すること",
+  "error-path": "異常系で適切に失敗し、回復導線が崩れないこと",
+  boundary: "境界値や入力制約が崩れないこと",
+  permission: "権限差分と拒否動作が崩れないこと",
+  "state-transition": "状態遷移と分岐条件が崩れないこと",
+  "mock-fixture": "統合前提や fixture との差異が崩れないこと",
+};
+
+function buildGuaranteeLayerSummarySection(
+  data: CollectedData,
+): readonly string[] {
+  const lines: string[] = [];
+  lines.push("## Guarantee-Oriented Layer Summary", "");
+
+  const intentNote = buildGuaranteeIntentNote(data.intentContext);
+  if (intentNote) {
+    lines.push(intentNote, "");
+  }
+
+  for (const bucket of GUARANTEE_BUCKETS) {
+    const items = data.allocationItems.filter((item) =>
+      bucket.destinations.includes(item.recommendedDestination),
+    );
+
+    lines.push(`### ${bucket.title}`, "");
+
+    if (items.length === 0) {
+      lines.push("- この PR では主要な配分はありません。", "");
+      continue;
+    }
+
+    for (const item of items) {
+      lines.push(
+        `- ${buildGuaranteeLayerBullet(item, bucket.kind, data.intentContext)}`,
+      );
+    }
+
+    lines.push("");
+  }
+
+  return lines;
+}
+
+function buildGuaranteeIntentNote(
+  intentContext: IntentContext | null,
+): string | null {
+  if (!intentContext || intentContext.extractionStatus === "empty") {
+    return null;
+  }
+
+  const parts: string[] = [];
+
+  if (intentContext.changePurpose) {
+    parts.push(`変更目的: ${intentContext.changePurpose}`);
+  }
+  if (intentContext.userStory) {
+    parts.push(`ユーザーストーリー: ${singleLine(intentContext.userStory)}`);
+  }
+  if (intentContext.acceptanceCriteria.length > 0) {
+    parts.push(
+      `達成要件: ${intentContext.acceptanceCriteria
+        .slice(0, 2)
+        .map(singleLine)
+        .join(" / ")}`,
+    );
+  }
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  return `この summary は ${parts.join(" | ")} を踏まえて再編しています。`;
+}
+
+function buildGuaranteeLayerBullet(
+  item: PersistedAllocationItem,
+  kind: "guarantee" | "manual",
+  intentContext: IntentContext | null,
+): string {
+  const paths = item.changedFilePaths.map((path) => `\`${escapePipe(path)}\``);
+  const pathLabel = paths.join(", ");
+  const guaranteeTarget = buildGuaranteeTarget(item);
+  const basis = buildGuaranteeBasis(item, intentContext);
+
+  if (kind === "manual") {
+    const manualReason =
+      item.sourceSignals.manualRemainder ??
+      firstNonEmpty(item.sourceSignals.openQuestions) ??
+      item.sourceSignals.reasoningSummary ??
+      item.rationale;
+    return `${pathLabel}: ${guaranteeTarget}。根拠: ${basis}。手動探索に残す理由: ${escapePipe(singleLine(manualReason))}`;
+  }
+
+  const whyThisLayer =
+    item.sourceSignals.reasoningSummary ??
+    item.rationale ??
+    "deterministic に保証しやすいため";
+
+  return `${pathLabel}: ${guaranteeTarget}。根拠: ${basis}。この層に寄せる理由: ${escapePipe(singleLine(whyThisLayer))}`;
+}
+
+function buildGuaranteeTarget(item: PersistedAllocationItem): string {
+  const labels = uniqueStrings(
+    item.sourceSignals.gapAspects.map(
+      (aspect) => GAP_GUARANTEE_LABELS[aspect] ?? `${aspect} を確認すること`,
+    ),
+  );
+
+  if (labels.length === 0) {
+    return "この変更で期待する振る舞いが崩れないこと";
+  }
+
+  return labels.join("、");
+}
+
+function buildGuaranteeBasis(
+  item: PersistedAllocationItem,
+  intentContext: IntentContext | null,
+): string {
+  const parts: string[] = [];
+
+  if (item.sourceSignals.gapAspects.length > 0) {
+    parts.push(`gap ${item.sourceSignals.gapAspects.join(", ")}`);
+  }
+  if (item.sourceSignals.categories.length > 0) {
+    parts.push(`change ${item.sourceSignals.categories.join(", ")}`);
+  }
+  if (
+    intentContext &&
+    intentContext.extractionStatus !== "empty" &&
+    intentContext.acceptanceCriteria.length > 0
+  ) {
+    parts.push(
+      `intent ${intentContext.acceptanceCriteria
+        .slice(0, 2)
+        .map(singleLine)
+        .join(" / ")}`,
+    );
+  } else if (
+    intentContext &&
+    intentContext.extractionStatus !== "empty" &&
+    intentContext.userStory
+  ) {
+    parts.push(`intent ${singleLine(intentContext.userStory)}`);
+  }
+
+  return parts.map((part) => escapePipe(part)).join(" | ");
+}
+
+function uniqueStrings(values: readonly string[]): readonly string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
+function firstNonEmpty(values: readonly string[] | undefined): string | null {
+  if (!values) {
+    return null;
+  }
+
+  for (const value of values) {
+    if (value.trim().length > 0) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function singleLine(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 // ---------------------------------------------------------------------------

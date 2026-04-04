@@ -559,6 +559,142 @@ describe("handoff tool", () => {
     expect(markdown).not.toContain("### PR Intent Context");
   });
 
+  it("renders layer applicability notes so non-primary layers are not mistaken for missing work", async () => {
+    const workspace = await setupWorkspace();
+    const prIntake = savePrIntake(workspace.databasePath, {
+      provider: "github",
+      repository: "owner/repo",
+      prNumber: 88,
+      title: "Refresh button visuals",
+      description: "Frontend-only component update",
+      author: "alice",
+      baseBranch: "main",
+      headBranch: "feature/button-visual-refresh",
+      headSha: "123abcd",
+      linkedIssues: [],
+      changedFiles: [
+        {
+          path: "src/components/Button.tsx",
+          status: "modified",
+          additions: 10,
+          deletions: 3,
+          previousPath: null,
+        },
+        {
+          path: "src/components/Button.test.tsx",
+          status: "modified",
+          additions: 8,
+          deletions: 1,
+          previousPath: null,
+        },
+        {
+          path: "src/components/Button.stories.tsx",
+          status: "modified",
+          additions: 7,
+          deletions: 0,
+          previousPath: null,
+        },
+      ],
+      reviewComments: [],
+      fetchedAt: "2026-04-05T00:00:00Z",
+    });
+    const changeAnalysis = saveChangeAnalysis(workspace.databasePath, {
+      prIntakeId: prIntake.id,
+      fileAnalyses: [
+        {
+          path: "src/components/Button.tsx",
+          status: "modified",
+          additions: 10,
+          deletions: 3,
+          categories: [
+            { category: "ui", confidence: 0.9, reason: "tsx component" },
+          ],
+        },
+      ],
+      relatedCodes: [],
+      viewpointSeeds: [],
+      summary: "frontend-only component change",
+      analyzedAt: "2026-04-05T00:00:00Z",
+    });
+    const testMapping = saveTestMapping(workspace.databasePath, {
+      prIntakeId: prIntake.id,
+      changeAnalysisId: changeAnalysis.id,
+      testAssets: [],
+      testSummaries: [],
+      coverageGapMap: [
+        {
+          changedFilePath: "src/components/Button.tsx",
+          aspect: "boundary",
+          status: "uncovered",
+          coveredBy: [],
+          explorationPriority: "medium",
+        },
+      ],
+      missingLayers: ["e2e", "visual", "api"],
+      mappedAt: "2026-04-05T00:00:00Z",
+    });
+    const riskAssessment = saveRiskAssessment(workspace.databasePath, {
+      testMappingId: testMapping.id,
+      riskScores: [
+        {
+          changedFilePath: "src/components/Button.tsx",
+          overallRisk: 0.4,
+          factors: [{ factor: "ui-change", weight: 0.4, contribution: 0.16 }],
+        },
+      ],
+      frameworkSelections: [],
+      explorationThemes: [],
+      assessedAt: "2026-04-05T00:00:00Z",
+    });
+    saveAllocationItems(workspace.databasePath, riskAssessment.id, [
+      {
+        riskAssessmentId: riskAssessment.id,
+        title: "Button props",
+        changedFilePaths: ["src/components/Button.tsx"],
+        riskLevel: "medium",
+        recommendedDestination: "unit",
+        confidence: 0.82,
+        rationale: "Component logic is deterministic",
+        sourceSignals: {
+          categories: ["ui"],
+          existingTestLayers: [],
+          gapAspects: ["boundary"],
+          reviewComments: [],
+          riskSignals: [],
+        },
+      },
+      {
+        riskAssessmentId: riskAssessment.id,
+        title: "Button render",
+        changedFilePaths: ["src/components/Button.tsx"],
+        riskLevel: "medium",
+        recommendedDestination: "visual",
+        confidence: 0.79,
+        rationale: "Rendering diff should be checked visually",
+        sourceSignals: {
+          categories: ["ui"],
+          existingTestLayers: [],
+          gapAspects: ["happy-path"],
+          reviewComments: [],
+          riskSignals: [],
+        },
+      },
+    ]);
+
+    const result = await generateHandoffMarkdown({
+      riskAssessmentId: riskAssessment.id,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    expect(result.markdown).toContain("### Layer Applicability");
+    expect(result.markdown).toContain("**integration/service**: `not-primary`");
+    expect(result.markdown).toContain(
+      "差分は UI / asset 中心で、service boundary を跨ぐ変更 signal は強くありません。",
+    );
+    expect(result.markdown).toContain("**visual**: `primary`");
+  });
+
   it("builds destination counts consistent with the saved allocation data", async () => {
     const workspace = await setupWorkspace();
     const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);

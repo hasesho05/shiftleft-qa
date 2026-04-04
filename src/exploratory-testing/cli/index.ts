@@ -312,6 +312,17 @@ cli
         headSha: result.persisted.headSha,
         changedFiles: result.persisted.changedFiles.length,
         reviewComments: result.persisted.reviewComments.length,
+        intentContext: result.intentContext
+          ? {
+              extractionStatus: result.intentContext.extractionStatus,
+              changePurpose: result.intentContext.changePurpose,
+              hasUserStory: result.intentContext.userStory !== null,
+              acceptanceCriteriaCount:
+                result.intentContext.acceptanceCriteria.length,
+              nonGoalsCount: result.intentContext.nonGoals.length,
+              notesForQaCount: result.intentContext.notesForQa.length,
+            }
+          : null,
         handoverPath: result.handover.filePath,
         status: result.handover.snapshot.status,
       };

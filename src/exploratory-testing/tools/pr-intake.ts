@@ -1,11 +1,19 @@
 import {
+  type PersistedIntentContext,
   type PersistedPrIntake,
+  saveIntentContext,
   savePrIntake,
 } from "../db/workspace-repository";
 import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
+import type { IntentContext } from "../models/intent-context";
 import type { PrMetadata } from "../models/pr-intake";
+import {
+  fetchLinkedIssueBodies,
+  parseLinkedIssueNumbers,
+} from "../scm/fetch-github";
 import { fetchPrMetadata } from "../scm/fetch-pr";
+import { parseIntentContext } from "../scm/intent-parser";
 import { readPluginConfig } from "./config";
 import {
   type StepHandoverWriteResult,
@@ -20,6 +28,7 @@ export type PrIntakeInput = {
 
 export type PrIntakeResult = {
   readonly persisted: PersistedPrIntake;
+  readonly intentContext: PersistedIntentContext | null;
   readonly handover: StepHandoverWriteResult;
 };
 
@@ -36,28 +45,92 @@ export async function runPrIntake(
     scmProvider: config.scmProvider,
   });
 
-  return savePrIntakeResult(metadata, config.paths.database, config);
+  let linkedIssueBodies: ReadonlyMap<number, string> | undefined;
+  if (metadata.linkedIssues.length > 0 && metadata.provider === "github") {
+    const issueNumbers = parseLinkedIssueNumbers(metadata.linkedIssues);
+    if (issueNumbers.length > 0) {
+      try {
+        linkedIssueBodies = await fetchLinkedIssueBodies(
+          issueNumbers,
+          config.workspaceRoot,
+        );
+      } catch {
+        // best-effort: continue without linked issue bodies
+      }
+    }
+  }
+
+  return savePrIntakeResult(
+    metadata,
+    config.paths.database,
+    config,
+    linkedIssueBodies,
+  );
 }
 
 export async function savePrIntakeResult(
   metadata: PrMetadata,
   databasePath: string,
   config: ResolvedPluginConfig,
+  linkedIssueBodies?: ReadonlyMap<number, string>,
 ): Promise<PrIntakeResult> {
   const persisted = savePrIntake(databasePath, metadata);
-  const body = buildIntakeHandoverBody(metadata);
+
+  const intentContext = extractAndSaveIntentContext(
+    databasePath,
+    persisted.id,
+    metadata,
+    linkedIssueBodies,
+  );
+
+  const body = buildIntakeHandoverBody(metadata, intentContext);
+
+  const contextSummary =
+    intentContext.extractionStatus !== "empty"
+      ? `, context: ${intentContext.extractionStatus}`
+      : "";
 
   const handover = await writeStepHandoverFromConfig(config, {
     stepName: "pr-intake",
     status: "completed",
-    summary: `Ingested ${metadata.repository}#${metadata.prNumber} (${metadata.changedFiles.length} files, ${metadata.reviewComments.length} comments)`,
+    summary: `Ingested ${metadata.repository}#${metadata.prNumber} (${metadata.changedFiles.length} files, ${metadata.reviewComments.length} comments${contextSummary})`,
     body,
   });
 
-  return { persisted, handover };
+  return { persisted, intentContext, handover };
 }
 
-function buildIntakeHandoverBody(metadata: PrMetadata): string {
+function extractAndSaveIntentContext(
+  databasePath: string,
+  prIntakeId: number,
+  metadata: PrMetadata,
+  linkedIssueBodies?: ReadonlyMap<number, string>,
+): PersistedIntentContext {
+  const sources: string[] = [];
+
+  if (metadata.description.trim().length > 0) {
+    sources.push(metadata.description);
+  }
+
+  const sourceRefs: string[] = [];
+
+  if (linkedIssueBodies) {
+    for (const [num, body] of linkedIssueBodies.entries()) {
+      if (body.trim().length > 0) {
+        sources.push(body);
+        sourceRefs.push(`#${num}`);
+      }
+    }
+  }
+
+  const context = parseIntentContext(sources, sourceRefs);
+  return saveIntentContext(databasePath, prIntakeId, context);
+}
+
+function buildIntakeHandoverBody(
+  metadata: PrMetadata,
+  intentContext: IntentContext,
+): string {
   const lines = [
     `# PR/MR Intake: ${escapePipe(metadata.repository)}#${metadata.prNumber}`,
     "",
@@ -102,6 +175,42 @@ function buildIntakeHandoverBody(metadata: PrMetadata): string {
       lines.push(
         `- **${escapePipe(comment.author)}**${location}: ${escapePipe(comment.body)}`,
       );
+    }
+    lines.push("");
+  }
+
+  if (intentContext.extractionStatus !== "empty") {
+    lines.push("## Intent Context", "");
+    lines.push(`- **Extraction Status**: ${intentContext.extractionStatus}`);
+    if (intentContext.changePurpose) {
+      lines.push(`- **Change Purpose**: ${intentContext.changePurpose}`);
+    }
+    if (intentContext.userStory) {
+      lines.push(`- **User Story**: ${escapePipe(intentContext.userStory)}`);
+    }
+    if (intentContext.acceptanceCriteria.length > 0) {
+      lines.push("", "### Acceptance Criteria", "");
+      for (const criterion of intentContext.acceptanceCriteria) {
+        lines.push(`- ${escapePipe(criterion)}`);
+      }
+    }
+    if (intentContext.nonGoals.length > 0) {
+      lines.push("", "### Non-Goals", "");
+      for (const goal of intentContext.nonGoals) {
+        lines.push(`- ${escapePipe(goal)}`);
+      }
+    }
+    if (intentContext.targetUsers.length > 0) {
+      lines.push("", "### Target Users", "");
+      for (const user of intentContext.targetUsers) {
+        lines.push(`- ${escapePipe(user)}`);
+      }
+    }
+    if (intentContext.notesForQa.length > 0) {
+      lines.push("", "### QA Notes", "");
+      for (const note of intentContext.notesForQa) {
+        lines.push(`- ${escapePipe(note)}`);
+      }
     }
     lines.push("");
   }

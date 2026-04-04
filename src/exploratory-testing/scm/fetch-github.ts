@@ -4,6 +4,7 @@ import { normalizeExecaError } from "../lib/execa-error";
 import type { PrMetadata } from "../models/pr-intake";
 import {
   buildPrMetadata,
+  ghIssueBodySchema,
   ghRepoViewSchema,
   parseGhPrCommentsJson,
   parseGhPrFilesJson,
@@ -49,6 +50,46 @@ export async function fetchGithubPr(
   );
 
   return buildPrMetadata(repoJson.nameWithOwner, prData, files, comments);
+}
+
+const LINKED_ISSUE_REF_REGEX = /^#(\d+)$/;
+
+export function parseLinkedIssueNumbers(
+  linkedIssues: readonly string[],
+): readonly number[] {
+  const numbers: number[] = [];
+  for (const ref of linkedIssues) {
+    const match = LINKED_ISSUE_REF_REGEX.exec(ref);
+    if (match) {
+      numbers.push(Number(match[1]));
+    }
+  }
+  return numbers;
+}
+
+export async function fetchLinkedIssueBodies(
+  issueNumbers: readonly number[],
+  cwd: string,
+): Promise<ReadonlyMap<number, string>> {
+  const results = await Promise.allSettled(
+    issueNumbers.map(async (num) => {
+      const result = await runGhCommand(
+        ["issue", "view", String(num), "--json", "body"],
+        cwd,
+      );
+      const parsed = ghIssueBodySchema.parse(JSON.parse(result.stdout));
+      return { num, body: parsed.body ?? "" };
+    }),
+  );
+
+  const bodies = new Map<number, string>();
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      bodies.set(result.value.num, result.value.body);
+    }
+    // best-effort: skip issues that failed to fetch
+  }
+  return bodies;
 }
 
 async function runGhCommand(

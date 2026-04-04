@@ -380,6 +380,9 @@ step 名や順序を変えたら、`createStepProgressFilename()`, `detectCurren
 
 の方が安全。探索プランニング用途では、偽陽性の安心感より偽陰性寄りの慎重さの方がマシ。
 
+また、multi-source merge するロジック（例: `inferChangePurpose`）では、分類不能時に `"other"` のような具体値を返さないこと。  
+`"other"` を返すと後続ソースの具体的な分類が無視される。分類不能は `null` を返し、呼び出し元が fallback を決める設計にする。
+
 ## 深い仕様を確認したいとき
 
 横断的な仕様変更やアーキテクチャ変更のときだけ参照:

@@ -37,6 +37,12 @@ import {
   recommendedTestLayerSchema,
 } from "../models/finding";
 import {
+  type IntentContext,
+  changePurposeSchema,
+  extractionStatusSchema,
+  intentContextSchema,
+} from "../models/intent-context";
+import {
   type PrMetadata,
   changedFileSchema,
   reviewCommentSchema,
@@ -71,7 +77,7 @@ import {
   testLayerSchema,
   testSummarySchema,
 } from "../models/test-mapping";
-import { WORKSPACE_SCHEMA_SQL } from "./schema";
+import { PR_INTAKE_CONTEXTS_TABLE_SQL, WORKSPACE_SCHEMA_SQL } from "./schema";
 
 export type WorkspaceStateRecord = {
   readonly configPath: string;
@@ -801,6 +807,140 @@ function mapPrIntakeRow(row: PrIntakeRow): PersistedPrIntake {
       JSON.parse(row.review_comments_json),
     ),
     fetchedAt: row.fetched_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// --- Intent Context repository ---
+
+export type PersistedIntentContext = IntentContext & {
+  readonly id: number;
+  readonly prIntakeId: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+type IntentContextRow = {
+  readonly id: number;
+  readonly pr_intake_id: number;
+  readonly change_purpose: string | null;
+  readonly user_story: string | null;
+  readonly acceptance_criteria_json: string;
+  readonly non_goals_json: string;
+  readonly target_users_json: string;
+  readonly notes_for_qa_json: string;
+  readonly source_refs_json: string;
+  readonly extraction_status: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export function saveIntentContext(
+  databasePath: string,
+  prIntakeId: number,
+  context: IntentContext,
+): PersistedIntentContext {
+  const database = openDatabase(databasePath);
+  const timestamp = new Date().toISOString();
+
+  try {
+    // Defensive: ensure table exists for pre-existing workspaces
+    // that were initialized before this feature was added.
+    database.exec(PR_INTAKE_CONTEXTS_TABLE_SQL);
+
+    const persist = database.transaction(() => {
+      database
+        .query(
+          `
+          INSERT INTO pr_intake_contexts (
+            pr_intake_id, change_purpose, user_story,
+            acceptance_criteria_json, non_goals_json, target_users_json,
+            notes_for_qa_json, source_refs_json, extraction_status,
+            created_at, updated_at
+          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+          ON CONFLICT(pr_intake_id) DO UPDATE SET
+            change_purpose = excluded.change_purpose,
+            user_story = excluded.user_story,
+            acceptance_criteria_json = excluded.acceptance_criteria_json,
+            non_goals_json = excluded.non_goals_json,
+            target_users_json = excluded.target_users_json,
+            notes_for_qa_json = excluded.notes_for_qa_json,
+            source_refs_json = excluded.source_refs_json,
+            extraction_status = excluded.extraction_status,
+            updated_at = excluded.updated_at
+          `,
+        )
+        .run(
+          prIntakeId,
+          context.changePurpose,
+          context.userStory,
+          JSON.stringify(context.acceptanceCriteria),
+          JSON.stringify(context.nonGoals),
+          JSON.stringify(context.targetUsers),
+          JSON.stringify(context.notesForQa),
+          JSON.stringify(context.sourceRefs),
+          context.extractionStatus,
+          timestamp,
+          timestamp,
+        );
+
+      return database
+        .query("SELECT * FROM pr_intake_contexts WHERE pr_intake_id = ?1")
+        .get<IntentContextRow>(prIntakeId);
+    });
+
+    const row = persist();
+
+    if (!row) {
+      throw new Error(
+        `Failed to persist intent context for pr_intake_id=${prIntakeId}`,
+      );
+    }
+
+    return mapIntentContextRow(row);
+  } finally {
+    database.close();
+  }
+}
+
+export function findIntentContext(
+  databasePath: string,
+  prIntakeId: number,
+): PersistedIntentContext | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const row = database
+      .query("SELECT * FROM pr_intake_contexts WHERE pr_intake_id = ?1")
+      .get<IntentContextRow>(prIntakeId);
+
+    return row ? mapIntentContextRow(row) : null;
+  } finally {
+    database.close();
+  }
+}
+
+function mapIntentContextRow(row: IntentContextRow): PersistedIntentContext {
+  return {
+    id: row.id,
+    prIntakeId: row.pr_intake_id,
+    changePurpose: row.change_purpose
+      ? changePurposeSchema.parse(row.change_purpose)
+      : null,
+    userStory: row.user_story,
+    acceptanceCriteria: v.parse(
+      v.array(v.string()),
+      JSON.parse(row.acceptance_criteria_json),
+    ),
+    nonGoals: v.parse(v.array(v.string()), JSON.parse(row.non_goals_json)),
+    targetUsers: v.parse(
+      v.array(v.string()),
+      JSON.parse(row.target_users_json),
+    ),
+    notesForQa: v.parse(v.array(v.string()), JSON.parse(row.notes_for_qa_json)),
+    sourceRefs: v.parse(v.array(v.string()), JSON.parse(row.source_refs_json)),
+    extractionStatus: extractionStatusSchema.parse(row.extraction_status),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

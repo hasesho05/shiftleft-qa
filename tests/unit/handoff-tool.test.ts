@@ -34,6 +34,7 @@ import {
   generateHandoffMarkdown,
   groupBySection,
   renderFindingsComment,
+  renderHandoffMarkdown,
   runAddHandoffComment,
   runCreateHandoffIssue,
   runUpdateHandoffIssue,
@@ -474,6 +475,31 @@ describe("handoff tool", () => {
     expect(renderFindingsComment(session, report)).toContain(
       "_No findings from this session._",
     );
+  });
+
+  it("renders confidence bucket and hypothesis disclaimer in handoff markdown", async () => {
+    const workspace = await setupWorkspace();
+    const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);
+
+    const result = await generateHandoffMarkdown({
+      riskAssessmentId,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    // Hypothesis framing disclaimer
+    expect(result.markdown).toContain(
+      "heuristic recommendations derived from code, diff, and test analysis",
+    );
+
+    // Covered section shows confidence
+    expect(result.markdown).toMatch(/Covered auth guard.*🟢 high/);
+
+    // Automation section shows confidence
+    expect(result.markdown).toMatch(/Retry boundary.*🟢 high/);
+
+    // Manual section shows confidence
+    expect(result.markdown).toMatch(/Retry timeout.*🔴 low/);
   });
 
   it("builds destination counts consistent with the saved allocation data", async () => {

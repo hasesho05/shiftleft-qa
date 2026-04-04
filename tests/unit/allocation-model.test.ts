@@ -5,6 +5,7 @@ import {
   allocationItemSchema,
   allocationSourceSignalsSchema,
   createEmptyAllocationDestinationCounts,
+  toConfidenceBucket,
 } from "../../src/exploratory-testing/models/allocation";
 
 describe("allocationDestinationSchema", () => {
@@ -88,6 +89,29 @@ describe("allocationItemSchema", () => {
         },
       }),
     ).toThrow();
+  });
+});
+
+describe("toConfidenceBucket", () => {
+  it("returns high for confidence >= 0.8", () => {
+    expect(toConfidenceBucket(0.8)).toBe("high");
+    expect(toConfidenceBucket(0.86)).toBe("high");
+    expect(toConfidenceBucket(0.95)).toBe("high");
+    expect(toConfidenceBucket(1.0)).toBe("high");
+  });
+
+  it("returns medium for confidence >= 0.5 and < 0.8", () => {
+    expect(toConfidenceBucket(0.5)).toBe("medium");
+    expect(toConfidenceBucket(0.55)).toBe("medium");
+    expect(toConfidenceBucket(0.6)).toBe("medium");
+    expect(toConfidenceBucket(0.75)).toBe("medium");
+    expect(toConfidenceBucket(0.79)).toBe("medium");
+  });
+
+  it("returns low for confidence < 0.5", () => {
+    expect(toConfidenceBucket(0.0)).toBe("low");
+    expect(toConfidenceBucket(0.35)).toBe("low");
+    expect(toConfidenceBucket(0.49)).toBe("low");
   });
 });
 

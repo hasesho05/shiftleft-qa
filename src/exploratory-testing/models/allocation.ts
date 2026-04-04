@@ -55,6 +55,14 @@ export type AllocationItem = v.InferOutput<typeof allocationItemSchema>;
 
 export type AllocationDestinationCounts = Record<AllocationDestination, number>;
 
+export type ConfidenceBucket = "high" | "medium" | "low";
+
+export function toConfidenceBucket(confidence: number): ConfidenceBucket {
+  if (confidence >= 0.8) return "high";
+  if (confidence >= 0.5) return "medium";
+  return "low";
+}
+
 export function createEmptyAllocationDestinationCounts(): AllocationDestinationCounts {
   return {
     review: 0,

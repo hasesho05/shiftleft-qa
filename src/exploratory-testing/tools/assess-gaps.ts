@@ -6,6 +6,7 @@ import {
   type PersistedRiskAssessment,
   type PersistedTestMapping,
   findChangeAnalysis,
+  findIntentContext,
   findPrIntake,
   findTestMapping,
   saveRiskAssessment,
@@ -86,10 +87,15 @@ export async function runAssessGapsFromMapping(
     testMapping.coverageGapMap,
   );
 
+  const intentContext =
+    findIntentContext(config.paths.database, changeAnalysis.prIntakeId) ??
+    undefined;
+
   const explorationThemes = generateExplorationThemes(
     riskScores,
     frameworkSelections,
     testMapping.coverageGapMap,
+    intentContext,
   );
 
   const assessmentResult: RiskAssessmentResult = {

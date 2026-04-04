@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   findRiskAssessment,
+  saveIntentContext,
   savePrIntake,
 } from "../../src/exploratory-testing/db/workspace-repository";
+import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
 import { runAssessGapsFromMapping } from "../../src/exploratory-testing/tools/assess-gaps";
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
@@ -230,5 +232,54 @@ describe("runAssessGapsFromMapping", () => {
         order[priorities[i - 1]],
       );
     }
+  });
+
+  it("enriches exploration theme descriptions with intent context when available", async () => {
+    const workspace = await setupWorkspace();
+    const config = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSampleMetadata(),
+    );
+
+    const intentContext: IntentContext = {
+      changePurpose: "bugfix",
+      userStory: "As a user, I see correct validation errors",
+      acceptanceCriteria: ["Error messages shown for invalid input"],
+      nonGoals: [],
+      targetUsers: [],
+      notesForQa: [],
+      sourceRefs: [],
+      extractionStatus: "parsed",
+    };
+    saveIntentContext(workspace.databasePath, prIntake.id, intentContext);
+
+    const contextResult = await runDiscoverContextFromIntake(prIntake, config);
+    const mappingResult = await runMapTestsFromAnalysis(
+      contextResult.persisted,
+      prIntake,
+      config,
+    );
+
+    const result = await runAssessGapsFromMapping(
+      mappingResult.persisted,
+      contextResult.persisted,
+      config,
+    );
+
+    // At least one theme should mention bugfix/regression context
+    const descriptions = result.persisted.explorationThemes.map(
+      (t) => t.description,
+    );
+    const hasIntentEnrichment = descriptions.some(
+      (d) =>
+        d.includes("bugfix") ||
+        d.includes("regression") ||
+        d.includes("validation errors"),
+    );
+    expect(hasIntentEnrichment).toBe(true);
   });
 });

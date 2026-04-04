@@ -1,3 +1,4 @@
+import type { IntentContext } from "../models/intent-context";
 import type {
   ExplorationFramework,
   ExplorationTheme,
@@ -89,15 +90,17 @@ const ASPECT_OBSERVATION_HINTS: Record<CoverageAspect, string> = {
 export function generateSessionCharters(
   themes: readonly ExplorationTheme[],
   coverageGaps: readonly CoverageGapEntry[],
+  intentContext?: IntentContext,
 ): readonly SessionCharter[] {
   if (themes.length === 0) {
     return [];
   }
 
   const gapsByFile = indexGapsByFile(coverageGaps);
+  const enrichment = resolveCharterEnrichment(intentContext);
 
   const pairs = themes.map((theme) => ({
-    charter: buildCharter(theme, gapsByFile),
+    charter: buildCharter(theme, gapsByFile, enrichment),
     riskLevel: theme.riskLevel,
   }));
 
@@ -123,13 +126,18 @@ function getPrimaryFramework(theme: ExplorationTheme): ExplorationFramework {
 function buildCharter(
   theme: ExplorationTheme,
   gapsByFile: ReadonlyMap<string, readonly CoverageGapEntry[]>,
+  enrichment: CharterEnrichment | null,
 ): SessionCharter {
   const primaryFramework = getPrimaryFramework(theme);
   const relevantGaps = collectRelevantGaps(theme.targetFiles, gapsByFile);
 
+  const baseGoal = buildGoal(primaryFramework, theme, relevantGaps);
+
   return {
     title: theme.title,
-    goal: buildGoal(primaryFramework, theme, relevantGaps),
+    goal: enrichment?.goalSuffix
+      ? `${baseGoal}. ${enrichment.goalSuffix}`
+      : baseGoal,
     scope: [...theme.targetFiles],
     selectedFrameworks: [...theme.frameworks],
     preconditions: [...buildPreconditions(theme)],
@@ -291,4 +299,30 @@ function hasApiFiles(files: readonly string[]): boolean {
   return files.some((file) =>
     API_PATTERNS.some((pattern) => pattern.test(file)),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Intent context enrichment for charters
+// ---------------------------------------------------------------------------
+
+type CharterEnrichment = {
+  readonly goalSuffix: string | null;
+};
+
+function resolveCharterEnrichment(
+  intentContext?: IntentContext,
+): CharterEnrichment | null {
+  if (!intentContext || intentContext.extractionStatus === "empty") {
+    return null;
+  }
+
+  const goalSuffix = intentContext.userStory
+    ? `PR context: ${collapseNewlines(intentContext.userStory)}`
+    : null;
+
+  return { goalSuffix };
+}
+
+function collapseNewlines(text: string): string {
+  return text.replace(/\n+/g, " ").trim();
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { generateSessionCharters } from "../../src/exploratory-testing/analysis/generate-session-charters";
+import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type { ExplorationTheme } from "../../src/exploratory-testing/models/risk-assessment";
 import type { CoverageGapEntry } from "../../src/exploratory-testing/models/test-mapping";
 
@@ -195,5 +196,76 @@ describe("generateSessionCharters", () => {
     expect(charters[0].title).toBe("High risk");
     expect(charters[1].title).toBe("Medium risk");
     expect(charters[2].title).toBe("Low risk");
+  });
+
+  describe("with intent context", () => {
+    function makeIntent(overrides: Partial<IntentContext> = {}): IntentContext {
+      return {
+        changePurpose: null,
+        userStory: null,
+        acceptanceCriteria: [],
+        nonGoals: [],
+        targetUsers: [],
+        notesForQa: [],
+        sourceRefs: [],
+        extractionStatus: "empty",
+        ...overrides,
+      };
+    }
+
+    it("enriches goal with user story context", () => {
+      const themes = [createTheme()];
+      const intent = makeIntent({
+        userStory: "As an admin, I can export reports",
+        extractionStatus: "parsed",
+      });
+
+      const charters = generateSessionCharters(themes, [], intent);
+
+      expect(charters[0].goal).toContain("export reports");
+    });
+
+    it("collapses multi-line user story into single line in goal", () => {
+      const themes = [createTheme()];
+      const intent = makeIntent({
+        userStory: "As an admin,\nI can export reports\nto CSV",
+        extractionStatus: "parsed",
+      });
+
+      const charters = generateSessionCharters(themes, [], intent);
+
+      expect(charters[0].goal).not.toContain("\n");
+      expect(charters[0].goal).toContain("export reports");
+    });
+
+    it("does not inject acceptanceCriteria or notesForQa into individual charters", () => {
+      const themes = [createTheme()];
+      const intent = makeIntent({
+        acceptanceCriteria: ["Export button is visible"],
+        notesForQa: ["Requires test admin account"],
+        extractionStatus: "parsed",
+      });
+
+      const without = generateSessionCharters(themes, []);
+      const with_ = generateSessionCharters(themes, [], intent);
+
+      expect(without[0].preconditions).toEqual(with_[0].preconditions);
+      expect(without[0].observationTargets).toEqual(
+        with_[0].observationTargets,
+      );
+    });
+
+    it("does not enrich when extractionStatus is empty", () => {
+      const themes = [createTheme()];
+      const intent = makeIntent({
+        userStory: "Should be ignored",
+        extractionStatus: "empty",
+      });
+
+      const without = generateSessionCharters(themes, []);
+      const with_ = generateSessionCharters(themes, [], intent);
+
+      expect(without[0].goal).toBe(with_[0].goal);
+    });
   });
 });

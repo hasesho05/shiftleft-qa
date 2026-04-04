@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { generateExplorationThemes } from "../../src/exploratory-testing/analysis/generate-exploration-themes";
+import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type {
   FrameworkSelection,
   RiskScore,
@@ -226,5 +227,182 @@ describe("generateExplorationThemes", () => {
 
   it("returns empty array when no frameworks are selected", () => {
     expect(generateExplorationThemes([], [], [])).toEqual([]);
+  });
+
+  describe("with intent context", () => {
+    function makeIntent(overrides: Partial<IntentContext> = {}): IntentContext {
+      return {
+        changePurpose: null,
+        userStory: null,
+        acceptanceCriteria: [],
+        nonGoals: [],
+        targetUsers: [],
+        notesForQa: [],
+        sourceRefs: [],
+        extractionStatus: "empty",
+        ...overrides,
+      };
+    }
+
+    it("enriches theme description with user story when provided", () => {
+      const riskScores: RiskScore[] = [
+        makeRiskScore({ changedFilePath: "src/a.ts", overallRisk: 0.6 }),
+      ];
+      const selections: FrameworkSelection[] = [
+        makeFrameworkSelection({
+          framework: "boundary-value-analysis",
+          reason: "Validation changes",
+          relevantFiles: ["src/a.ts"],
+          priority: "medium",
+        }),
+      ];
+      const intent = makeIntent({
+        userStory: "As an admin, I can export reports",
+        extractionStatus: "parsed",
+      });
+
+      const themes = generateExplorationThemes(
+        riskScores,
+        selections,
+        [],
+        intent,
+      );
+
+      expect(themes[0].description).toContain("export reports");
+    });
+
+    it("enriches theme description with acceptance criteria", () => {
+      const riskScores: RiskScore[] = [
+        makeRiskScore({ changedFilePath: "src/a.ts", overallRisk: 0.6 }),
+      ];
+      const selections: FrameworkSelection[] = [
+        makeFrameworkSelection({
+          framework: "boundary-value-analysis",
+          relevantFiles: ["src/a.ts"],
+          priority: "medium",
+        }),
+      ];
+      const intent = makeIntent({
+        acceptanceCriteria: ["CSV contains all columns"],
+        extractionStatus: "parsed",
+      });
+
+      const themes = generateExplorationThemes(
+        riskScores,
+        selections,
+        [],
+        intent,
+      );
+
+      expect(themes[0].description).toContain("CSV contains all columns");
+    });
+
+    it("preserves original description when intent context is empty", () => {
+      const riskScores: RiskScore[] = [
+        makeRiskScore({ changedFilePath: "src/a.ts", overallRisk: 0.6 }),
+      ];
+      const selections: FrameworkSelection[] = [
+        makeFrameworkSelection({
+          framework: "boundary-value-analysis",
+          reason: "Validation changes",
+          relevantFiles: ["src/a.ts"],
+          priority: "medium",
+        }),
+      ];
+
+      const withoutIntent = generateExplorationThemes(
+        riskScores,
+        selections,
+        [],
+      );
+      const withEmptyIntent = generateExplorationThemes(
+        riskScores,
+        selections,
+        [],
+        makeIntent(),
+      );
+
+      expect(withoutIntent[0].description).toBe(withEmptyIntent[0].description);
+    });
+
+    it("does not enrich when extractionStatus is empty", () => {
+      const riskScores: RiskScore[] = [
+        makeRiskScore({ changedFilePath: "src/a.ts", overallRisk: 0.6 }),
+      ];
+      const selections: FrameworkSelection[] = [
+        makeFrameworkSelection({
+          framework: "boundary-value-analysis",
+          reason: "Original reason",
+          relevantFiles: ["src/a.ts"],
+          priority: "medium",
+        }),
+      ];
+      const intent = makeIntent({
+        userStory: "Should be ignored because status is empty",
+        extractionStatus: "empty",
+      });
+
+      const themes = generateExplorationThemes(
+        riskScores,
+        selections,
+        [],
+        intent,
+      );
+
+      expect(themes[0].description).not.toContain("Should be ignored");
+    });
+
+    it("adds changePurpose=bugfix annotation to descriptions", () => {
+      const riskScores: RiskScore[] = [
+        makeRiskScore({ changedFilePath: "src/a.ts", overallRisk: 0.6 }),
+      ];
+      const selections: FrameworkSelection[] = [
+        makeFrameworkSelection({
+          framework: "error-guessing",
+          relevantFiles: ["src/a.ts"],
+          priority: "medium",
+        }),
+      ];
+      const intent = makeIntent({
+        changePurpose: "bugfix",
+        extractionStatus: "parsed",
+      });
+
+      const themes = generateExplorationThemes(
+        riskScores,
+        selections,
+        [],
+        intent,
+      );
+
+      expect(themes[0].description).toMatch(/bugfix|regression/i);
+    });
+
+    it("does not produce double periods when base description ends with a period", () => {
+      const riskScores: RiskScore[] = [
+        makeRiskScore({ changedFilePath: "src/a.ts", overallRisk: 0.6 }),
+      ];
+      const selections: FrameworkSelection[] = [
+        makeFrameworkSelection({
+          framework: "boundary-value-analysis",
+          reason: "Reason ending with a period.",
+          relevantFiles: ["src/a.ts"],
+          priority: "medium",
+        }),
+      ];
+      const intent = makeIntent({
+        changePurpose: "feature",
+        extractionStatus: "parsed",
+      });
+
+      const themes = generateExplorationThemes(
+        riskScores,
+        selections,
+        [],
+        intent,
+      );
+
+      expect(themes[0].description).not.toContain("..");
+    });
   });
 });

@@ -7,7 +7,7 @@ description: exploratory testing plugin の config、workspace state、progress 
 
 ## 目的
 
-後続 step が会話履歴ではなく、ファイルと SQLite を正本として再開できるように workspace を初期化する。
+後続 step が会話履歴ではなく、ファイルと SQLite をローカル状態として再開できるように workspace を初期化する。
 
 ## 前提条件
 

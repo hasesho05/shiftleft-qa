@@ -13,6 +13,7 @@ import {
 import { escapePipe } from "../lib/markdown";
 import {
   type AllocationDestinationCounts,
+  type ConfidenceBucket,
   toConfidenceBucket,
 } from "../models/allocation";
 import type { ResolvedPluginConfig } from "../models/config";
@@ -336,7 +337,7 @@ export function renderFindingsComment(
   return lines.join("\n");
 }
 
-const CONFIDENCE_ICONS: Record<string, string> = {
+const CONFIDENCE_ICONS: Record<ConfidenceBucket, string> = {
   high: "🟢",
   medium: "🟡",
   low: "🔴",

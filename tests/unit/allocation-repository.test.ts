@@ -278,6 +278,106 @@ describe("allocation repository", () => {
     ).toHaveLength(1);
   });
 
+  it("round-trips optional explanation fields in sourceSignals", async () => {
+    const workspace = await setupWorkspace();
+    const riskAssessmentId = seedDependencies(workspace.databasePath);
+
+    const itemsWithExplanation: AllocationItem[] = [
+      {
+        riskAssessmentId,
+        title: "Review src/index.ts (permission)",
+        changedFilePaths: ["src/index.ts"],
+        riskLevel: "high",
+        recommendedDestination: "review",
+        confidence: 0.9,
+        rationale: "Permission changes should be reviewed.",
+        sourceSignals: {
+          categories: ["permission"],
+          existingTestLayers: [],
+          gapAspects: ["permission"],
+          reviewComments: [],
+          riskSignals: ["permission"],
+          reasoningSummary:
+            "Permission category triggers review; auth guard needs human verification.",
+          alternativeDestinations: ["unit", "manual-exploration"],
+          openQuestions: ["Does the guard cover admin endpoints?"],
+        },
+      },
+      {
+        riskAssessmentId,
+        title: "Manual exploration for src/index.ts (error-path)",
+        changedFilePaths: ["src/index.ts"],
+        riskLevel: "high",
+        recommendedDestination: "manual-exploration",
+        confidence: 0.4,
+        rationale: "Stateful risk remains.",
+        sourceSignals: {
+          categories: [],
+          existingTestLayers: [],
+          gapAspects: ["error-path"],
+          reviewComments: [],
+          riskSignals: ["timing"],
+          reasoningSummary:
+            "No deterministic category matched; stateful error paths remain ambiguous.",
+          alternativeDestinations: ["dev-box"],
+          openQuestions: [],
+          manualRemainder:
+            "Error recovery involves timing-dependent state that cannot be pinned by automated tests.",
+        },
+      },
+    ];
+
+    const saved = saveAllocationItems(
+      workspace.databasePath,
+      riskAssessmentId,
+      itemsWithExplanation,
+    );
+
+    expect(saved).toHaveLength(2);
+    expect(saved[0]?.sourceSignals.reasoningSummary).toBe(
+      "Permission category triggers review; auth guard needs human verification.",
+    );
+    expect(saved[0]?.sourceSignals.alternativeDestinations).toEqual([
+      "unit",
+      "manual-exploration",
+    ]);
+    expect(saved[0]?.sourceSignals.openQuestions).toEqual([
+      "Does the guard cover admin endpoints?",
+    ]);
+    expect(saved[0]?.sourceSignals.manualRemainder).toBeUndefined();
+
+    expect(saved[1]?.sourceSignals.manualRemainder).toBe(
+      "Error recovery involves timing-dependent state that cannot be pinned by automated tests.",
+    );
+
+    const listed = listAllocationItems(
+      workspace.databasePath,
+      riskAssessmentId,
+    );
+    expect(listed[0]?.sourceSignals.reasoningSummary).toBe(
+      "Permission category triggers review; auth guard needs human verification.",
+    );
+    expect(listed[1]?.sourceSignals.manualRemainder).toBe(
+      "Error recovery involves timing-dependent state that cannot be pinned by automated tests.",
+    );
+  });
+
+  it("round-trips items without optional fields (backward compat)", async () => {
+    const workspace = await setupWorkspace();
+    const riskAssessmentId = seedDependencies(workspace.databasePath);
+
+    const saved = saveAllocationItems(
+      workspace.databasePath,
+      riskAssessmentId,
+      createAllocationItems(riskAssessmentId),
+    );
+
+    expect(saved[0]?.sourceSignals.reasoningSummary).toBeUndefined();
+    expect(saved[0]?.sourceSignals.alternativeDestinations).toBeUndefined();
+    expect(saved[0]?.sourceSignals.openQuestions).toBeUndefined();
+    expect(saved[0]?.sourceSignals.manualRemainder).toBeUndefined();
+  });
+
   it("throws when the risk assessment parent is missing", async () => {
     const workspace = await setupWorkspace();
 

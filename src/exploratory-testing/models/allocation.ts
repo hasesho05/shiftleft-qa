@@ -31,6 +31,12 @@ export const allocationSourceSignalsSchema = schema(
     gapAspects: v.array(coverageAspectSchema),
     reviewComments: v.array(v.string()),
     riskSignals: v.array(v.string()),
+    reasoningSummary: v.optional(v.string()),
+    alternativeDestinations: v.optional(
+      v.array(v.picklist(ALLOCATION_DESTINATIONS)),
+    ),
+    openQuestions: v.optional(v.array(v.string())),
+    manualRemainder: v.optional(v.string()),
   }),
 );
 

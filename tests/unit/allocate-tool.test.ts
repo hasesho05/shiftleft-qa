@@ -526,6 +526,165 @@ describe("allocate tool", () => {
     expect(result.destinationCounts.skip).toBeGreaterThan(0);
   });
 
+  it("populates reasoningSummary on every allocation item", async () => {
+    const workspace = await setupWorkspace();
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSamplePrMetadata(),
+    );
+    const changeAnalysis = saveChangeAnalysis(
+      workspace.databasePath,
+      createSampleChangeAnalysis(prIntake.id),
+    );
+    const testMapping = saveTestMapping(
+      workspace.databasePath,
+      createSampleTestMapping(prIntake.id, changeAnalysis.id),
+    );
+    const riskAssessment = saveRiskAssessment(
+      workspace.databasePath,
+      createSampleRiskAssessment(testMapping.id),
+    );
+    const context = {
+      riskAssessment,
+      testMapping,
+      changeAnalysis,
+      prIntake,
+    };
+
+    const items = buildAllocationItems(context);
+
+    for (const item of items) {
+      expect(item.sourceSignals.reasoningSummary).toBeDefined();
+      expect(typeof item.sourceSignals.reasoningSummary).toBe("string");
+      expect(item.sourceSignals.reasoningSummary?.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("populates alternativeDestinations as non-empty array for non-skip items", async () => {
+    const workspace = await setupWorkspace();
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSamplePrMetadata(),
+    );
+    const changeAnalysis = saveChangeAnalysis(
+      workspace.databasePath,
+      createSampleChangeAnalysis(prIntake.id),
+    );
+    const testMapping = saveTestMapping(
+      workspace.databasePath,
+      createSampleTestMapping(prIntake.id, changeAnalysis.id),
+    );
+    const riskAssessment = saveRiskAssessment(
+      workspace.databasePath,
+      createSampleRiskAssessment(testMapping.id),
+    );
+    const context = {
+      riskAssessment,
+      testMapping,
+      changeAnalysis,
+      prIntake,
+    };
+
+    const items = buildAllocationItems(context);
+
+    for (const item of items) {
+      expect(item.sourceSignals.alternativeDestinations).toBeDefined();
+      expect(Array.isArray(item.sourceSignals.alternativeDestinations)).toBe(
+        true,
+      );
+
+      if (item.recommendedDestination !== "skip") {
+        expect(
+          item.sourceSignals.alternativeDestinations?.length ?? 0,
+        ).toBeGreaterThan(0);
+      }
+
+      // recommended should not appear in alternatives
+      expect(item.sourceSignals.alternativeDestinations).not.toContain(
+        item.recommendedDestination,
+      );
+    }
+  });
+
+  it("populates openQuestions as an array", async () => {
+    const workspace = await setupWorkspace();
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSamplePrMetadata(),
+    );
+    const changeAnalysis = saveChangeAnalysis(
+      workspace.databasePath,
+      createSampleChangeAnalysis(prIntake.id),
+    );
+    const testMapping = saveTestMapping(
+      workspace.databasePath,
+      createSampleTestMapping(prIntake.id, changeAnalysis.id),
+    );
+    const riskAssessment = saveRiskAssessment(
+      workspace.databasePath,
+      createSampleRiskAssessment(testMapping.id),
+    );
+    const context = {
+      riskAssessment,
+      testMapping,
+      changeAnalysis,
+      prIntake,
+    };
+
+    const items = buildAllocationItems(context);
+
+    for (const item of items) {
+      expect(item.sourceSignals.openQuestions).toBeDefined();
+      expect(Array.isArray(item.sourceSignals.openQuestions)).toBe(true);
+    }
+  });
+
+  it("populates manualRemainder only for manual-exploration items", async () => {
+    const workspace = await setupWorkspace();
+    const prIntake = savePrIntake(
+      workspace.databasePath,
+      createSamplePrMetadata(),
+    );
+    const changeAnalysis = saveChangeAnalysis(
+      workspace.databasePath,
+      createSampleChangeAnalysis(prIntake.id),
+    );
+    const testMapping = saveTestMapping(
+      workspace.databasePath,
+      createSampleTestMapping(prIntake.id, changeAnalysis.id),
+    );
+    const riskAssessment = saveRiskAssessment(
+      workspace.databasePath,
+      createSampleRiskAssessment(testMapping.id),
+    );
+    const context = {
+      riskAssessment,
+      testMapping,
+      changeAnalysis,
+      prIntake,
+    };
+
+    const items = buildAllocationItems(context);
+
+    const manualItems = items.filter(
+      (item) => item.recommendedDestination === "manual-exploration",
+    );
+    const nonManualItems = items.filter(
+      (item) => item.recommendedDestination !== "manual-exploration",
+    );
+
+    expect(manualItems.length).toBeGreaterThan(0);
+    for (const item of manualItems) {
+      expect(item.sourceSignals.manualRemainder).toBeDefined();
+      expect(typeof item.sourceSignals.manualRemainder).toBe("string");
+      expect(item.sourceSignals.manualRemainder?.length).toBeGreaterThan(0);
+    }
+
+    for (const item of nonManualItems) {
+      expect(item.sourceSignals.manualRemainder).toBeUndefined();
+    }
+  });
+
   it("summarizes allocation with representative items", async () => {
     const workspace = await setupWorkspace();
     const riskAssessmentId = seedAllocationPipeline(workspace.databasePath);

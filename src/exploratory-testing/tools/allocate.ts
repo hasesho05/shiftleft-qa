@@ -344,6 +344,13 @@ function buildAllocationItem(input: {
   );
   const riskLevel = deriveRiskLevel(input.riskScore, [input.gap]);
 
+  const alternativeDestinations = deriveAlternativeDestinations(
+    destination,
+    input.fileAnalysis,
+    input.gap,
+    input.riskScore,
+  );
+
   return {
     riskAssessmentId: input.riskAssessmentId,
     title: buildAllocationTitle(destination, input.fileAnalysis.path, [
@@ -365,6 +372,22 @@ function buildAllocationItem(input: {
       gapAspects: [input.gap.aspect],
       reviewComments: [...input.reviewComments],
       riskSignals,
+      reasoningSummary: buildReasoningSummary(
+        destination,
+        categories,
+        input.gap,
+        input.riskScore,
+      ),
+      alternativeDestinations,
+      openQuestions: deriveOpenQuestions(
+        destination,
+        input.gap,
+        input.reviewComments,
+      ),
+      manualRemainder:
+        destination === "manual-exploration"
+          ? buildManualRemainder(input.fileAnalysis.path, input.gap, categories)
+          : undefined,
     },
   };
 }
@@ -611,4 +634,162 @@ function countItemsByDestination(
   }
 
   return counts;
+}
+
+function buildReasoningSummary(
+  destination: AllocationDestination,
+  categories: readonly ChangeCategory[],
+  gap: CoverageGapEntry,
+  riskScore: PersistedRiskAssessment["riskScores"][number] | null,
+): string {
+  const categoryList =
+    categories.length > 0 ? categories.join(", ") : "no specific category";
+  const riskNote = riskScore
+    ? `; risk=${riskScore.overallRisk.toFixed(2)}`
+    : "";
+
+  switch (destination) {
+    case "skip":
+      return `Gap aspect ${gap.aspect} is already covered${riskNote}.`;
+    case "review":
+      return `Category ${categoryList} triggers review destination${riskNote}.`;
+    case "unit":
+      return `Category ${categoryList} is deterministic and suitable for unit testing (${gap.aspect} gap)${riskNote}.`;
+    case "integration":
+      return `Category ${categoryList} involves service boundaries best covered by integration tests (${gap.aspect} gap)${riskNote}.`;
+    case "e2e":
+      return `UI component in a flow path requires end-to-end validation (${gap.aspect} gap)${riskNote}.`;
+    case "visual":
+      return `UI component outside flow paths is best covered by visual regression (${gap.aspect} gap)${riskNote}.`;
+    case "dev-box":
+      return `Low-risk ${gap.aspect} gap suitable for implementer smoke check${riskNote}.`;
+    case "manual-exploration":
+      return `No deterministic category matched; ${gap.aspect} gap remains ambiguous and requires human exploration${riskNote}.`;
+  }
+}
+
+function deriveAlternativeDestinations(
+  primary: AllocationDestination,
+  fileAnalysis: AllocationContext["changeAnalysis"]["fileAnalyses"][number],
+  gap: CoverageGapEntry,
+  riskScore: PersistedRiskAssessment["riskScores"][number] | null,
+): AllocationDestination[] {
+  if (primary === "skip") {
+    return [];
+  }
+
+  // Candidates are pushed in preference order: most specific first,
+  // manual-exploration last (weakest alternative).
+  const candidates: AllocationDestination[] = [];
+  const categories = new Set(fileAnalysis.categories.map((c) => c.category));
+
+  if (
+    primary !== "review" &&
+    hasAnyCategory(categories, ["permission", "feature-flag"])
+  ) {
+    candidates.push("review");
+  }
+
+  if (
+    primary !== "unit" &&
+    hasAnyCategory(categories, ["validation", "state-transition"])
+  ) {
+    candidates.push("unit");
+  }
+
+  if (
+    primary !== "integration" &&
+    hasAnyCategory(categories, ["api", "schema", "cross-service", "async"])
+  ) {
+    candidates.push("integration");
+  }
+
+  if (hasAnyCategory(categories, ["ui"])) {
+    const preferred = isFlowPath(fileAnalysis.path) ? "e2e" : "visual";
+    const other: AllocationDestination =
+      preferred === "e2e" ? "visual" : "e2e";
+
+    if (primary !== preferred) {
+      candidates.push(preferred);
+    }
+    if (primary !== other) {
+      candidates.push(other);
+    }
+  }
+
+  if (
+    primary !== "dev-box" &&
+    riskScore &&
+    riskScore.overallRisk < 0.33 &&
+    gap.aspect === "happy-path"
+  ) {
+    candidates.push("dev-box");
+  }
+
+  // manual-exploration is the weakest alternative: append last
+  if (primary !== "manual-exploration" && gap.status !== "covered") {
+    candidates.push("manual-exploration");
+  }
+
+  // manual-exploration fallback: always offer dev-box as a minimum alternative
+  if (primary === "manual-exploration" && candidates.length === 0) {
+    candidates.push("dev-box");
+  }
+
+  // All pushes above are individually guarded by `primary !== <destination>`,
+  // so no candidate can equal primary here.
+  return candidates;
+}
+
+function deriveOpenQuestions(
+  destination: AllocationDestination,
+  gap: CoverageGapEntry,
+  reviewComments: readonly string[],
+): string[] {
+  const questions: string[] = [];
+
+  if (gap.status === "partial") {
+    questions.push(
+      `Gap aspect "${gap.aspect}" is only partially covered — what scenarios remain untested?`,
+    );
+  }
+
+  if (gap.status === "uncovered" && gap.aspect === "error-path") {
+    questions.push(
+      "What error conditions can realistically occur in production?",
+    );
+  }
+
+  if (gap.aspect === "permission") {
+    questions.push(
+      "Are all permission scenarios (roles, edge cases) accounted for?",
+    );
+  }
+
+  if (gap.aspect === "state-transition") {
+    questions.push(
+      "Are there race conditions or ordering dependencies in state transitions?",
+    );
+  }
+
+  if (reviewComments.length > 0) {
+    questions.push(
+      "Reviewer flagged concerns — have all review comments been addressed?",
+    );
+  }
+
+  return questions;
+}
+
+function buildManualRemainder(
+  filePath: string,
+  gap: CoverageGapEntry,
+  categories: readonly ChangeCategory[],
+): string {
+  const categoryNote =
+    categories.length > 0
+      ? `Categories (${categories.join(", ")}) did not match a deterministic destination.`
+      : "No specific change category was identified.";
+
+  return `${categoryNote} The ${gap.aspect} gap in ${filePath} requires human exploration because the risk is ambiguous or stateful.`;
 }

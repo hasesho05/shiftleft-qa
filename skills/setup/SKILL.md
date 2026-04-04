@@ -1,6 +1,6 @@
 ---
 name: setup
-description: exploratory testing plugin の config、workspace state、progress tracking を初期化する。
+description: shiftleft-qa の config、workspace state、progress tracking を初期化する。
 ---
 
 # セットアップ

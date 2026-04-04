@@ -6,7 +6,7 @@ describe("readPluginManifest", () => {
   it("loads and validates the plugin manifest", async () => {
     const manifest = await readPluginManifest();
 
-    expect(manifest.name).toBe("exploratory-testing-plugin");
+    expect(manifest.name).toBe("shiftleft-qa");
     expect(manifest.skills.length).toBeGreaterThan(0);
     expect(
       manifest.skills.some((skill) => skill.name === "generate-charters"),

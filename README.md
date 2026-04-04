@@ -1,6 +1,6 @@
-# exploratory-testing-plugin
+# shiftleft-qa
 
-PR の変更内容を読み、確認項目を `review` / `unit` / `integration` / `e2e` / `visual` / `dev-box` / `manual-exploration` / `skip` に振り分け、最後に残った手動探索だけを GitHub Issue に handoff する Claude Code 向けプラグインです。
+`shiftleft-qa` は、PR の変更内容を読み、確認項目を `review` / `unit` / `integration` / `e2e` / `visual` / `dev-box` / `manual-exploration` / `skip` に振り分け、最後に残った手動探索だけを GitHub Issue に handoff する Claude Code 向けプラグインです。
 
 この plugin の目的は、手動探索を増やすことではありません。  
 review / automated test / dev-box で前倒しに潰せる項目を切り出し、最後に残る manual exploration だけを QA に渡すことを目的としています。
@@ -38,6 +38,8 @@ live GitHub / GitLab API E2E | 現状は local / mocked test 中心
 - shared source of truth は GitHub Issue
 - local DB / progress files は個人作業の resumable state / cache
 - exported artifacts は補助資料であり、primary handoff ではない
+- handoff checklist は確定仕様ではなく、confidence つきの探索仮説として扱う
+- PR 本文や関連 Issue に目的・ユーザーストーリー・達成要件が書かれていれば、`pr-intake` で任意に取り込んで後続 step の判断材料にする
 - 手動探索で大事なのは checklist の件数ではなく、状態・境界・タイミング・解釈の曖昧さを推論しながら観察すること
 - そのため `generate-charters` は allocation の残余である `manual-exploration` だけを対象にする
 
@@ -48,8 +50,8 @@ live GitHub / GitLab API E2E | 現状は local / mocked test 中心
 通常はこちらを想定します。
 
 ```bash
-/plugin marketplace add hasesho05/exploratory-testing-plugin
-/plugin install exploratory-testing-plugin@exploratory-testing-plugin
+/plugin marketplace add hasesho05/shiftleft-qa
+/plugin install shiftleft-qa@shiftleft-qa
 ```
 
 ### 方法 2: このリポジトリを clone して開発・検証する
@@ -75,7 +77,7 @@ bun run check
 1. 必要なら `capabilities` で前提と非対応を確認する
 2. `setup` で local state を初期化する
 3. `pr-intake` 以降で PR を解析する
-4. AI が allocation を作り、GitHub QA handoff Issue を publish / update する
+4. AI が allocation を作り、confidence つきの GitHub QA handoff Issue を publish / update する
 5. `manual-exploration` に残った項目だけから charter を作る
 6. 探索結果を findings として GitHub に返す
 
@@ -117,16 +119,16 @@ capabilities
 --- | ---
 `capabilities` | 対応範囲・前提・非対応を案内する
 `setup` | local state を初期化する
-`pr-intake` | PR metadata と changed files を取り込む
+`pr-intake` | PR metadata、changed files、任意の intent context を取り込む
 `discover-context` | changed files 周辺の文脈を解析する
 `map-tests` | 関連テストと coverage gap を整理する
 `assess-gaps` | risk score / framework / exploration themes を作る
 `allocate` | 確認項目を destination ごとに振り分ける
-`handoff` | GitHub Issue に QA handoff を publish / update する
+`handoff` | confidence つきの QA handoff hypothesis を GitHub Issue に publish / update する
 `generate-charters` | `manual-exploration` 項目だけから charter を作る
 `run-session` | 手動探索セッションを記録する
 `triage-findings` | observations を defect / spec-gap / automation-candidate に整理する
-`export-artifacts` | 補助資料として markdown artifacts を出力する
+`export-artifacts` | 補助資料として markdown artifacts と heuristic feedback report を出力する
 
 ## Source of Truth
 
@@ -144,11 +146,12 @@ primary handoff は GitHub Issue です。
 
 ファイル | 内容
 --- | ---
-`exploration-brief.md` | PR 概要、変更カテゴリ、viewpoint seeds、リスク要約
+`exploration-brief.md` | PR 概要、変更カテゴリ、viewpoint seeds、guarantee-oriented layer summary、リスク要約
 `coverage-gap-map.md` | coverage gaps、missing layers、関連テスト候補
 `session-charters.md` | `manual-exploration` 向け charter
 `findings-report.md` | findings 一覧
 `automation-candidate-report.md` | automation candidate 一覧
+`heuristic-feedback-report.md` | findings と allocation / charter のズレを見直す補助レポート
 
 ## 前提条件
 
@@ -202,8 +205,10 @@ primary handoff は GitHub Issue です。
 
 - local DB / progress files は shared source of truth ではありません
 - GitHub Issue が QA handoff の正本です
+- handoff の checklist は confidence つきの探索仮説であり、観察結果で更新される前提です
 - この plugin の目的は manual exploration を増やすことではなく、manual に残る前に削ることです
 - exported artifacts は補助資料であり、運用の主役ではありません
+- PR 本文や関連 Issue に変更の目的・ユーザーストーリー・達成要件があれば、より良い allocation と handoff を作りやすくなります
 - 手動探索では checklist 消化よりも、推論しながら曖昧さを観察することを重視します
 
 ## 開発者向け

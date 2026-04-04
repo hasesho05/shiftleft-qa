@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "exploratory-testing-plugin",
+  "name": "shiftleft-qa",
   "owner": {
     "name": "hasesho05"
   },
@@ -9,7 +9,7 @@
   },
   "plugins": [
     {
-      "name": "exploratory-testing-plugin",
+      "name": "shiftleft-qa",
       "source": "./",
       "description": "PR の確認項目を allocation し、manual exploration だけを GitHub Issue に handoff する Claude Code Plugin。",
       "skills": [

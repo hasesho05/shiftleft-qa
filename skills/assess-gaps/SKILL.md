@@ -27,4 +27,4 @@ change analysis と test map から優先度付きの探索テーマを作る。
 
 ## 次の Step
 
-- `generate-charters`
+- `allocate`

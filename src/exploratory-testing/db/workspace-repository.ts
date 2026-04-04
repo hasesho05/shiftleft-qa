@@ -532,7 +532,7 @@ export function detectAllStaleSteps(
 
 export type DivergenceEntry = {
   readonly stepName: string;
-  readonly field: "status" | "updated_at" | "file_missing" | "file_parse_error";
+  readonly field: "status" | "file_missing" | "file_parse_error";
   readonly dbValue: string | null;
   readonly fileValue: string | null;
 };
@@ -544,7 +544,6 @@ export type DivergenceReport = {
 
 export async function detectProgressDivergence(
   databasePath: string,
-  progressDirectory: string,
   workspaceRoot: string,
 ): Promise<DivergenceReport> {
   const snapshots = listStepProgressSnapshots(databasePath);

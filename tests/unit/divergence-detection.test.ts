@@ -48,7 +48,6 @@ describe("detectProgressDivergence", () => {
 
     const report = await detectProgressDivergence(
       config.paths.database,
-      config.paths.progressDirectory,
       config.workspaceRoot,
     );
 
@@ -84,7 +83,6 @@ describe("detectProgressDivergence", () => {
 
     const report = await detectProgressDivergence(
       config.paths.database,
-      config.paths.progressDirectory,
       config.workspaceRoot,
     );
 
@@ -118,7 +116,6 @@ describe("detectProgressDivergence", () => {
 
     const report = await detectProgressDivergence(
       config.paths.database,
-      config.paths.progressDirectory,
       config.workspaceRoot,
     );
 
@@ -139,7 +136,6 @@ describe("detectProgressDivergence", () => {
     // Only setup step is written by initializeWorkspace
     const report = await detectProgressDivergence(
       config.paths.database,
-      config.paths.progressDirectory,
       config.workspaceRoot,
     );
 

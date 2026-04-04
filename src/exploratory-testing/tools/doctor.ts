@@ -115,7 +115,6 @@ export async function checkWorkspaceHealth(
 
   const divergenceReport = await detectProgressDivergence(
     config.paths.database,
-    config.paths.progressDirectory,
     config.workspaceRoot,
   );
 

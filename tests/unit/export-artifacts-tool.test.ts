@@ -656,7 +656,7 @@ describe("export-artifacts tool", () => {
       );
     });
 
-    it("contains findings-by-destination section", async () => {
+    it("attributes findings only to manual-exploration destination", async () => {
       const workspace = await setupWithAllocations();
       const config = await readPluginConfig(
         workspace.configPath,
@@ -671,10 +671,15 @@ describe("export-artifacts tool", () => {
 
       expect(content).toContain("# Heuristic Feedback Report");
       expect(content).toContain("## Findings by Allocation Destination");
-      expect(content).toContain("manual-exploration");
+      // manual-exploration has 1 item and 2 findings
+      expect(content).toContain("| manual-exploration | 1 | 2 |");
+      // review has 1 item but 0 findings (not explored)
+      expect(content).toContain("| review | 1 | 0 |");
+      // unit has 1 item but 0 findings (not explored)
+      expect(content).toContain("| unit | 1 | 0 |");
     });
 
-    it("contains findings-by-confidence-bucket section", async () => {
+    it("attributes confidence bucket only from manual-exploration items", async () => {
       const workspace = await setupWithAllocations();
       const config = await readPluginConfig(
         workspace.configPath,
@@ -688,10 +693,15 @@ describe("export-artifacts tool", () => {
       );
 
       expect(content).toContain("## Findings by Confidence Bucket");
-      expect(content).toContain("high");
+      // manual-exploration item has confidence 0.85 = high bucket, 2 findings
+      expect(content).toContain("| high | 1 | 2 |");
+      // medium bucket has 1 item (unit, confidence 0.7) but 0 findings
+      expect(content).toContain("| medium | 1 | 0 |");
+      // low bucket has 1 item (review, confidence 0.4) but 0 findings
+      expect(content).toContain("| low | 1 | 0 |");
     });
 
-    it("contains findings-by-gap-aspect section", async () => {
+    it("attributes gap aspects only from manual-exploration items", async () => {
       const workspace = await setupWithAllocations();
       const config = await readPluginConfig(
         workspace.configPath,
@@ -705,7 +715,13 @@ describe("export-artifacts tool", () => {
       );
 
       expect(content).toContain("## Findings by Gap Aspect");
-      expect(content).toContain("error-path");
+      // manual-exploration item has gapAspects: ["error-path", "permission"]
+      expect(content).toContain("| error-path | 2 |");
+      expect(content).toContain("| permission | 2 |");
+      // "boundary" is only on the unit item — should NOT appear
+      expect(content).not.toContain("| boundary |");
+      // "happy-path" is only on the review item — should NOT appear
+      expect(content).not.toContain("| happy-path |");
     });
 
     it("contains findings-by-charter section", async () => {
@@ -723,7 +739,25 @@ describe("export-artifacts tool", () => {
 
       expect(content).toContain("## Findings by Charter");
       expect(content).toContain("Auth error handling");
-      expect(content).toContain("error-guessing");
+    });
+
+    it("contains findings-by-framework section", async () => {
+      const workspace = await setupWithAllocations();
+      const config = await readPluginConfig(
+        workspace.configPath,
+        workspace.manifestPath,
+      );
+
+      const result = await exportArtifacts({ prIntakeId: 1, config });
+      const content = await readFile(
+        result.artifacts.heuristicFeedbackReport,
+        "utf8",
+      );
+
+      expect(content).toContain("## Findings by Framework");
+      // charter has selectedFrameworks: ["error-guessing", "boundary-value-analysis"]
+      expect(content).toContain("| boundary-value-analysis | 2 |");
+      expect(content).toContain("| error-guessing | 2 |");
     });
 
     it("shows empty findings when no findings exist", async () => {

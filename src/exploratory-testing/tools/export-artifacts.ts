@@ -543,6 +543,9 @@ function buildHeuristicFeedbackReport(data: CollectedData): string {
   );
   lines.push(...buildFindingsByGapAspect(findingAllocations));
   lines.push(...buildFindingsByCharter(findings, sessionById, sessionCharters));
+  lines.push(
+    ...buildFindingsByFramework(findings, sessionById, sessionCharters),
+  );
 
   return lines.join("\n");
 }
@@ -569,13 +572,19 @@ function resolveFindingAllocations(
       return { finding, matchedItems: [] };
     }
 
-    // Collect allocation items whose changedFilePaths overlap with charter scope
+    // Collect only manual-exploration allocation items whose changedFilePaths
+    // overlap with charter scope. Charters are generated from manual-exploration
+    // items, so findings should only be attributed to those — not to items that
+    // were shifted left (unit, review, etc.) and never explored.
     const matchedItemIds = new Set<number>();
     const matchedItems: PersistedAllocationItem[] = [];
     for (const scopePath of charter.scope) {
       const items = allocationsByFile.get(scopePath) ?? [];
       for (const item of items) {
-        if (!matchedItemIds.has(item.id)) {
+        if (
+          item.recommendedDestination === "manual-exploration" &&
+          !matchedItemIds.has(item.id)
+        ) {
           matchedItemIds.add(item.id);
           matchedItems.push(item);
         }
@@ -737,6 +746,48 @@ function buildFindingsByCharter(
     lines.push(
       `| ${escapePipe(charter.title)} | ${escapePipe(frameworks)} | ${count} |`,
     );
+  }
+  lines.push("");
+
+  return lines;
+}
+
+function buildFindingsByFramework(
+  findings: readonly PersistedFinding[],
+  sessionById: ReadonlyMap<number, PersistedSession>,
+  sessionCharters: PersistedSessionCharters,
+): readonly string[] {
+  const lines: string[] = [];
+  lines.push("## Findings by Framework", "");
+
+  // Count findings per framework across all charters
+  const findingCountByFramework = new Map<string, number>();
+  for (const finding of findings) {
+    const session = sessionById.get(finding.sessionId);
+    if (!session) continue;
+
+    const charter = sessionCharters.charters[session.charterIndex];
+    if (!charter) continue;
+
+    const frameworks = new Set(charter.selectedFrameworks);
+    for (const framework of frameworks) {
+      const count = findingCountByFramework.get(framework) ?? 0;
+      findingCountByFramework.set(framework, count + 1);
+    }
+  }
+
+  if (findingCountByFramework.size === 0) {
+    lines.push("No frameworks linked to findings.", "");
+    return lines;
+  }
+
+  lines.push("| Framework | Findings |");
+  lines.push("| --- | --- |");
+  const sorted = [...findingCountByFramework.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+  );
+  for (const [framework, count] of sorted) {
+    lines.push(`| ${escapePipe(framework)} | ${count} |`);
   }
   lines.push("");
 

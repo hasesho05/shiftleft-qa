@@ -88,7 +88,7 @@ export function seedSessionCharters(databasePath: string): {
         title: "Auth error handling",
         goal: "Verify error responses",
         scope: ["src/middleware/auth.ts"],
-        selectedFrameworks: ["error-guessing"],
+        selectedFrameworks: ["error-guessing", "boundary-value-analysis"],
         preconditions: [],
         observationTargets: [
           { category: "network", description: "Check responses" },

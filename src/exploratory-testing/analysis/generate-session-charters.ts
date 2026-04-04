@@ -131,8 +131,6 @@ function buildCharter(
   const primaryFramework = getPrimaryFramework(theme);
   const relevantGaps = collectRelevantGaps(theme.targetFiles, gapsByFile);
 
-  const basePreconditions = buildPreconditions(theme);
-  const baseObservationTargets = buildObservationTargets(theme, relevantGaps);
   const baseGoal = buildGoal(primaryFramework, theme, relevantGaps);
 
   return {
@@ -142,11 +140,8 @@ function buildCharter(
       : baseGoal,
     scope: [...theme.targetFiles],
     selectedFrameworks: [...theme.frameworks],
-    preconditions: [...basePreconditions, ...(enrichment?.preconditions ?? [])],
-    observationTargets: [
-      ...baseObservationTargets,
-      ...(enrichment?.observationTargets ?? []),
-    ],
+    preconditions: [...buildPreconditions(theme)],
+    observationTargets: [...buildObservationTargets(theme, relevantGaps)],
     stopConditions: [...buildStopConditions(theme, primaryFramework)],
     timeboxMinutes: theme.estimatedMinutes,
   };
@@ -312,8 +307,6 @@ function hasApiFiles(files: readonly string[]): boolean {
 
 type CharterEnrichment = {
   readonly goalSuffix: string | null;
-  readonly preconditions: readonly string[];
-  readonly observationTargets: readonly ObservationTarget[];
 };
 
 function resolveCharterEnrichment(
@@ -324,21 +317,12 @@ function resolveCharterEnrichment(
   }
 
   const goalSuffix = intentContext.userStory
-    ? `PR context: ${intentContext.userStory}`
+    ? `PR context: ${collapseNewlines(intentContext.userStory)}`
     : null;
 
-  const preconditions: string[] = [];
-  for (const note of intentContext.notesForQa) {
-    preconditions.push(`QA note: ${note}`);
-  }
+  return { goalSuffix };
+}
 
-  const observationTargets: ObservationTarget[] = [];
-  for (const criterion of intentContext.acceptanceCriteria) {
-    observationTargets.push({
-      category: "acceptance-criteria",
-      description: `Verify: ${criterion}`,
-    });
-  }
-
-  return { goalSuffix, preconditions, observationTargets };
+function collapseNewlines(text: string): string {
+  return text.replace(/\n+/g, " ").trim();
 }

@@ -153,8 +153,9 @@ function addUserStorySeeds(
 ): void {
   if (!ctx.userStory) return;
 
-  map.get("user-persona")?.push(`User story context: ${ctx.userStory}`);
-  map.get("functional-user-flow")?.push(`User story flow: ${ctx.userStory}`);
+  const collapsed = ctx.userStory.replace(/\n+/g, " ").trim();
+  map.get("user-persona")?.push(`User story context: ${collapsed}`);
+  map.get("functional-user-flow")?.push(`User story flow: ${collapsed}`);
 }
 
 function addTargetUsersSeeds(

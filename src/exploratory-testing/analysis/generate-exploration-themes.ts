@@ -255,7 +255,7 @@ function buildIntentEnrichment(
     : null;
 
   const userStoryNote = intentContext.userStory
-    ? `PR context: ${intentContext.userStory}`
+    ? `PR context: ${intentContext.userStory.replace(/\n+/g, " ").trim()}`
     : null;
 
   const criteriaNote =

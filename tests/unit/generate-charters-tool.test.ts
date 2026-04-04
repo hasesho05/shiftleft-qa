@@ -117,9 +117,16 @@ describe("runGenerateChartersFromAllocation", () => {
       "manual-exploration",
     );
 
+    const devBoxItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "dev-box",
+    );
+
     const result = await runGenerateChartersFromAllocation(
       assessResult.persisted,
       manualItems,
+      devBoxItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
@@ -182,9 +189,16 @@ describe("runGenerateChartersFromAllocation", () => {
       "manual-exploration",
     );
 
+    const devBoxItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "dev-box",
+    );
+
     const result = await runGenerateChartersFromAllocation(
       assessResult.persisted,
       manualItems,
+      devBoxItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
@@ -199,6 +213,13 @@ describe("runGenerateChartersFromAllocation", () => {
     expect(handoverDoc.body).toContain("Charter Summary");
     expect(handoverDoc.body).toContain("Charter Details");
     expect(handoverDoc.body).toContain("Next step");
+
+    // Pruning result is included
+    expect(result.pruning).toBeDefined();
+    expect(result.pruning.budgetMinutes).toBe(120);
+    expect(result.pruning.selectedItemIds.length).toBeGreaterThanOrEqual(0);
+    // Summary includes budget info
+    expect(result.handover.snapshot.summary).toContain("budget:");
   });
 
   it("is idempotent for same risk assessment", async () => {
@@ -235,15 +256,23 @@ describe("runGenerateChartersFromAllocation", () => {
       "manual-exploration",
     );
 
+    const devBoxItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "dev-box",
+    );
+
     const first = await runGenerateChartersFromAllocation(
       assessResult.persisted,
       manualItems,
+      devBoxItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
     const second = await runGenerateChartersFromAllocation(
       assessResult.persisted,
       manualItems,
+      devBoxItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
@@ -285,9 +314,16 @@ describe("runGenerateChartersFromAllocation", () => {
       "manual-exploration",
     );
 
+    const devBoxItems = listAllocationItemsByDestination(
+      workspace.databasePath,
+      assessResult.persisted.id,
+      "dev-box",
+    );
+
     const result = await runGenerateChartersFromAllocation(
       assessResult.persisted,
       manualItems,
+      devBoxItems,
       mappingResult.persisted.coverageGapMap,
       config,
     );
@@ -331,6 +367,7 @@ describe("runGenerateChartersFromAllocation", () => {
     // Pass empty manual items
     const result = await runGenerateChartersFromAllocation(
       assessResult.persisted,
+      [],
       [],
       mappingResult.persisted.coverageGapMap,
       config,

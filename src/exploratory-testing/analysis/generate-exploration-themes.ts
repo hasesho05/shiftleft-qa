@@ -274,17 +274,21 @@ function enrichDescription(
     return baseDescription;
   }
 
-  const parts = [baseDescription];
+  const parts = [trimTrailingPeriods(baseDescription)];
 
   if (enrichment.purposeAnnotation) {
-    parts.push(enrichment.purposeAnnotation);
+    parts.push(trimTrailingPeriods(enrichment.purposeAnnotation));
   }
   if (enrichment.userStoryNote) {
-    parts.push(enrichment.userStoryNote);
+    parts.push(trimTrailingPeriods(enrichment.userStoryNote));
   }
   if (enrichment.criteriaNote) {
-    parts.push(enrichment.criteriaNote);
+    parts.push(trimTrailingPeriods(enrichment.criteriaNote));
   }
 
-  return parts.join(". ");
+  return parts.filter((p) => p.length > 0).join(". ");
+}
+
+function trimTrailingPeriods(text: string): string {
+  return text.replace(/\.+$/, "");
 }

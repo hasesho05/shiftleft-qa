@@ -377,5 +377,32 @@ describe("generateExplorationThemes", () => {
 
       expect(themes[0].description).toMatch(/bugfix|regression/i);
     });
+
+    it("does not produce double periods when base description ends with a period", () => {
+      const riskScores: RiskScore[] = [
+        makeRiskScore({ changedFilePath: "src/a.ts", overallRisk: 0.6 }),
+      ];
+      const selections: FrameworkSelection[] = [
+        makeFrameworkSelection({
+          framework: "boundary-value-analysis",
+          reason: "Reason ending with a period.",
+          relevantFiles: ["src/a.ts"],
+          priority: "medium",
+        }),
+      ];
+      const intent = makeIntent({
+        changePurpose: "feature",
+        extractionStatus: "parsed",
+      });
+
+      const themes = generateExplorationThemes(
+        riskScores,
+        selections,
+        [],
+        intent,
+      );
+
+      expect(themes[0].description).not.toContain("..");
+    });
   });
 });

@@ -1,9 +1,15 @@
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 
 import { Database } from "bun:sqlite";
+import matter from "gray-matter";
 
-import { WORKFLOW_SKILLS, getWorkflowSkillOrThrow } from "../config/workflow";
+import {
+  WORKFLOW_SKILLS,
+  getWorkflowSkillOrThrow,
+  getWorkflowStepNumber,
+} from "../config/workflow";
 import { v } from "../lib/validation";
 import {
   type AllocationDestination,
@@ -396,6 +402,202 @@ function mapStepProgressRow(row: StepProgressRow): StepProgressSnapshot {
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
   };
+}
+
+// --- Stale detection ---
+
+export type StaleStepInfo = {
+  readonly stepName: string;
+  readonly stepOrder: number;
+  readonly updatedAt: string;
+  readonly staleReason: string;
+};
+
+export function detectStaleDownstreamSteps(
+  databasePath: string,
+  reRunStepName: string,
+): readonly StaleStepInfo[] {
+  const stepNumber = getWorkflowStepNumber(reRunStepName);
+
+  const database = openDatabase(databasePath);
+
+  try {
+    const reRunRow = database
+      .query("SELECT updated_at FROM step_progress WHERE step_name = ?1")
+      .get<{ readonly updated_at: string | null }>(reRunStepName);
+
+    if (!reRunRow?.updated_at) {
+      return [];
+    }
+
+    const reRunUpdatedAt = reRunRow.updated_at;
+
+    const downstreamRows = database
+      .query(
+        `
+        SELECT
+          ws.step_name AS step_name,
+          ws.step_order AS step_order,
+          sp.updated_at AS updated_at,
+          sp.status AS status
+        FROM workflow_steps ws
+        INNER JOIN step_progress sp ON ws.step_name = sp.step_name
+        WHERE ws.step_order > ?1
+          AND sp.status NOT IN ('pending')
+          AND sp.updated_at IS NOT NULL
+          AND sp.updated_at < ?2
+        ORDER BY ws.step_order
+        `,
+      )
+      .all<{
+        readonly step_name: string;
+        readonly step_order: number;
+        readonly updated_at: string;
+        readonly status: string;
+      }>(stepNumber, reRunUpdatedAt);
+
+    return downstreamRows.map((row) => ({
+      stepName: row.step_name,
+      stepOrder: row.step_order,
+      updatedAt: row.updated_at,
+      staleReason: `${reRunStepName} が ${reRunUpdatedAt} に再実行されましたが、${row.step_name} の最終更新は ${row.updated_at} です`,
+    }));
+  } finally {
+    database.close();
+  }
+}
+
+type StaleDownstreamRow = {
+  readonly upstream_step_name: string;
+  readonly upstream_updated_at: string;
+  readonly downstream_step_name: string;
+  readonly downstream_step_order: number;
+  readonly downstream_updated_at: string;
+};
+
+export function detectAllStaleSteps(
+  databasePath: string,
+): readonly StaleStepInfo[] {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query(
+        `
+        SELECT
+          upstream.step_name AS upstream_step_name,
+          upstream.updated_at AS upstream_updated_at,
+          downstream_ws.step_name AS downstream_step_name,
+          downstream_ws.step_order AS downstream_step_order,
+          downstream.updated_at AS downstream_updated_at
+        FROM step_progress upstream
+        INNER JOIN workflow_steps upstream_ws
+          ON upstream.step_name = upstream_ws.step_name
+        INNER JOIN workflow_steps downstream_ws
+          ON downstream_ws.step_order > upstream_ws.step_order
+        INNER JOIN step_progress downstream
+          ON downstream_ws.step_name = downstream.step_name
+        WHERE upstream.status = 'completed'
+          AND upstream.updated_at IS NOT NULL
+          AND downstream.status NOT IN ('pending')
+          AND downstream.updated_at IS NOT NULL
+          AND downstream.updated_at < upstream.updated_at
+        ORDER BY downstream_ws.step_order
+        `,
+      )
+      .all<StaleDownstreamRow>();
+
+    const seen = new Set<string>();
+    const result: StaleStepInfo[] = [];
+
+    for (const row of rows) {
+      if (!seen.has(row.downstream_step_name)) {
+        seen.add(row.downstream_step_name);
+        result.push({
+          stepName: row.downstream_step_name,
+          stepOrder: row.downstream_step_order,
+          updatedAt: row.downstream_updated_at,
+          staleReason: `${row.upstream_step_name} が ${row.upstream_updated_at} に再実行されましたが、${row.downstream_step_name} の最終更新は ${row.downstream_updated_at} です`,
+        });
+      }
+    }
+
+    return result;
+  } finally {
+    database.close();
+  }
+}
+
+// --- Divergence detection ---
+
+export type DivergenceEntry = {
+  readonly stepName: string;
+  readonly field: "status" | "updated_at" | "file_missing" | "file_parse_error";
+  readonly dbValue: string | null;
+  readonly fileValue: string | null;
+};
+
+export type DivergenceReport = {
+  readonly totalChecked: number;
+  readonly divergences: readonly DivergenceEntry[];
+};
+
+export async function detectProgressDivergence(
+  databasePath: string,
+  progressDirectory: string,
+  workspaceRoot: string,
+): Promise<DivergenceReport> {
+  const snapshots = listStepProgressSnapshots(databasePath);
+  const divergences: DivergenceEntry[] = [];
+  let totalChecked = 0;
+
+  for (const snapshot of snapshots) {
+    if (!snapshot.progressPath) {
+      continue;
+    }
+
+    totalChecked++;
+
+    const filePath = resolve(workspaceRoot, snapshot.progressPath);
+    let fileContent: string;
+    try {
+      fileContent = await readFile(filePath, "utf8");
+    } catch {
+      divergences.push({
+        stepName: snapshot.stepName,
+        field: "file_missing",
+        dbValue: snapshot.status,
+        fileValue: null,
+      });
+      continue;
+    }
+
+    let parsed: ReturnType<typeof matter>;
+    try {
+      parsed = matter(fileContent);
+    } catch {
+      divergences.push({
+        stepName: snapshot.stepName,
+        field: "file_parse_error",
+        dbValue: null,
+        fileValue: null,
+      });
+      continue;
+    }
+
+    const data = parsed.data;
+    const fileStatus = typeof data.status === "string" ? data.status : null;
+    if (fileStatus !== snapshot.status) {
+      divergences.push({
+        stepName: snapshot.stepName,
+        field: "status",
+        dbValue: snapshot.status,
+        fileValue: fileStatus,
+      });
+    }
+  }
+
+  return { totalChecked, divergences };
 }
 
 // --- PR Intake repository ---

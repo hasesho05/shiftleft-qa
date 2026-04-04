@@ -1,6 +1,6 @@
 ---
 name: capabilities
-description: exploratory-testing-plugin の対応範囲、前提、非対応事項を案内する。
+description: shiftleft-qa の対応範囲、前提、非対応事項を案内する。
 ---
 
 # Capabilities

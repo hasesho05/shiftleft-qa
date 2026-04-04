@@ -9,7 +9,7 @@ export type TestWorkspace = {
 };
 
 export async function createTestWorkspace(): Promise<TestWorkspace> {
-  const root = await mkdtemp(join(tmpdir(), "exploratory-testing-plugin-"));
+  const root = await mkdtemp(join(tmpdir(), "shiftleft-qa-"));
   const pluginDirectory = join(root, ".claude-plugin");
   const manifestPath = join(pluginDirectory, "plugin.json");
   const configPath = join(root, "config.json");
@@ -19,10 +19,10 @@ export async function createTestWorkspace(): Promise<TestWorkspace> {
     manifestPath,
     `${JSON.stringify(
       {
-        name: "exploratory-testing-plugin",
+        name: "shiftleft-qa",
         version: "0.1.0",
         description:
-          "Claude Code plugin scaffold for post-implementation exploratory testing.",
+          "Shift-left test allocation と GitHub QA handoff を支援する Claude Code Plugin。",
         runtime: {
           packageManager: "bun",
           entry: "bun run dev",

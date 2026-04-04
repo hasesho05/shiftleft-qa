@@ -706,12 +706,17 @@ function deriveAlternativeDestinations(
     candidates.push("integration");
   }
 
-  if (
-    primary !== "e2e" &&
-    primary !== "visual" &&
-    hasAnyCategory(categories, ["ui"])
-  ) {
-    candidates.push(isFlowPath(fileAnalysis.path) ? "e2e" : "visual");
+  if (hasAnyCategory(categories, ["ui"])) {
+    const preferred = isFlowPath(fileAnalysis.path) ? "e2e" : "visual";
+    const other: AllocationDestination =
+      preferred === "e2e" ? "visual" : "e2e";
+
+    if (primary !== preferred) {
+      candidates.push(preferred);
+    }
+    if (primary !== other) {
+      candidates.push(other);
+    }
   }
 
   if (

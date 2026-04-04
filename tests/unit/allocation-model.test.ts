@@ -45,6 +45,63 @@ describe("allocationSourceSignalsSchema", () => {
     expect(result.existingTestLayers).toEqual(["unit", "visual"]);
     expect(result.gapAspects).toEqual(["permission", "happy-path"]);
   });
+
+  it("accepts optional explanation fields", () => {
+    const result = allocationSourceSignalsSchema.parse({
+      categories: ["permission"],
+      existingTestLayers: [],
+      gapAspects: ["permission"],
+      reviewComments: [],
+      riskSignals: ["permission"],
+      reasoningSummary:
+        "Permission category triggers review destination; auth guard changes require human verification.",
+      alternativeDestinations: ["unit", "manual-exploration"],
+      openQuestions: ["Does the guard cover all admin endpoints?"],
+    });
+
+    expect(result.reasoningSummary).toBe(
+      "Permission category triggers review destination; auth guard changes require human verification.",
+    );
+    expect(result.alternativeDestinations).toEqual([
+      "unit",
+      "manual-exploration",
+    ]);
+    expect(result.openQuestions).toEqual([
+      "Does the guard cover all admin endpoints?",
+    ]);
+    expect(result.manualRemainder).toBeUndefined();
+  });
+
+  it("accepts manualRemainder for manual-exploration items", () => {
+    const result = allocationSourceSignalsSchema.parse({
+      categories: [],
+      existingTestLayers: [],
+      gapAspects: ["error-path"],
+      reviewComments: [],
+      riskSignals: ["timing"],
+      manualRemainder:
+        "Stateful error recovery cannot be pinned by deterministic tests.",
+    });
+
+    expect(result.manualRemainder).toBe(
+      "Stateful error recovery cannot be pinned by deterministic tests.",
+    );
+  });
+
+  it("parses without optional explanation fields (backward compat)", () => {
+    const result = allocationSourceSignalsSchema.parse({
+      categories: ["ui"],
+      existingTestLayers: ["visual"],
+      gapAspects: ["happy-path"],
+      reviewComments: [],
+      riskSignals: [],
+    });
+
+    expect(result.reasoningSummary).toBeUndefined();
+    expect(result.alternativeDestinations).toBeUndefined();
+    expect(result.openQuestions).toBeUndefined();
+    expect(result.manualRemainder).toBeUndefined();
+  });
 });
 
 describe("allocationItemSchema", () => {

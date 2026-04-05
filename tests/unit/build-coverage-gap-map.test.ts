@@ -257,6 +257,37 @@ describe("buildCoverageGapMap", () => {
     expect(happyPath?.stabilityNotes ?? []).toHaveLength(0);
   });
 
+  it("keeps covered when both stable and flaky confirmed tests exist", () => {
+    const fileAnalyses = [makeFileAnalysis("src/auth.ts")];
+    const testAssets = [
+      makeTestAsset(
+        "tests/unit/auth.test.ts",
+        "unit",
+        ["src/auth.ts"],
+        "stable",
+      ),
+      makeTestAsset(
+        "tests/e2e/flaky/auth.spec.ts",
+        "e2e",
+        ["src/auth.ts"],
+        "flaky",
+        ["path:flaky"],
+      ),
+    ];
+    const testSummaries = [
+      makeTestSummary("tests/unit/auth.test.ts", "unit", ["happy-path"]),
+      makeTestSummary("tests/e2e/flaky/auth.spec.ts", "e2e", ["happy-path"]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+
+    const happyPath = gaps.find(
+      (g) => g.changedFilePath === "src/auth.ts" && g.aspect === "happy-path",
+    );
+    expect(happyPath?.status).toBe("covered");
+    expect(happyPath?.stabilityNotes?.length).toBeGreaterThan(0);
+  });
+
   it("preserves unknown stability as-is (no downgrade)", () => {
     const fileAnalyses = [makeFileAnalysis("src/auth.ts")];
     const testAssets = [

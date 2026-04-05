@@ -90,7 +90,13 @@ export function buildCoverageGapMap(
       const stabilityNotes = collectStabilityNotes(coveredBy, stabilityByAsset);
 
       if (stabilityNotes.length > 0 && status === "covered") {
-        status = "partial";
+        const hasStableConfirmed = coveredBy.some((testPath) => {
+          const asset = stabilityByAsset.get(testPath);
+          return asset !== undefined && !isUnstable(asset.stability);
+        });
+        if (!hasStableConfirmed) {
+          status = "partial";
+        }
       }
 
       const explorationPriority = derivePriority(status);

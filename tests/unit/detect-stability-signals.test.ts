@@ -170,6 +170,16 @@ describe("detectStabilityFromSource", () => {
     expect(result.stability).toBe("unknown");
   });
 
+  it("does not match flaky after block comment closes", () => {
+    const source = `
+      /* normal comment */ const flaky = true;
+    `;
+
+    const result = detectStabilityFromSource(source);
+
+    expect(result.stability).toBe("unknown");
+  });
+
   it("detects flaky in block comments", () => {
     const source = `
       /* This test is flaky due to timing */

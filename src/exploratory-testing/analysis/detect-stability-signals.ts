@@ -102,7 +102,7 @@ const STRUCTURAL_PATTERNS: readonly {
     status: "quarantined",
   },
   {
-    pattern: /\/\/.*\bflaky\b|\/\*[\s\S]*?\bflaky\b/i,
+    pattern: /\/\/.*\bflaky\b|\/\*(?:(?!\*\/)[\s\S])*?\bflaky\b/i,
     signal: "comment:flaky",
     status: "flaky",
   },

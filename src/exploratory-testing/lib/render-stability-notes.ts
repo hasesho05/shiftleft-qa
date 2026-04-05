@@ -8,12 +8,28 @@ export type StabilityNote = {
   readonly note: string;
 };
 
+/**
+ * Collect stability notes only for test assets that actually appear in
+ * coverageGapMap.coveredBy. This prevents heuristic candidates (which may
+ * not exist on disk) from being presented as "existing test notes".
+ */
 export function collectStabilityNotesFromTestMapping(
   testMapping: PersistedTestMapping,
 ): readonly StabilityNote[] {
+  const coverageReferencedPaths = new Set<string>();
+  for (const gap of testMapping.coverageGapMap) {
+    for (const testPath of gap.coveredBy) {
+      coverageReferencedPaths.add(testPath);
+    }
+  }
+
   const notes: StabilityNote[] = [];
 
   for (const asset of testMapping.testAssets) {
+    if (!coverageReferencedPaths.has(asset.path)) {
+      continue;
+    }
+
     const stability = asset.stability ?? "unknown";
     if (stability !== "flaky" && stability !== "quarantined") {
       continue;

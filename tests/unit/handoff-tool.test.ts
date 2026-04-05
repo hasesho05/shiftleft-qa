@@ -784,7 +784,7 @@ describe("handoff tool", () => {
     expect(markdown).not.toContain("既存テストの注意点");
   });
 
-  it("collectStabilityNotesFromTestMapping extracts flaky and quarantined assets", () => {
+  it("collectStabilityNotesFromTestMapping only includes assets referenced in coveredBy", () => {
     const testMapping = {
       id: 1,
       prIntakeId: 1,
@@ -819,7 +819,16 @@ describe("handoff tool", () => {
         },
       ],
       testSummaries: [],
-      coverageGapMap: [],
+      coverageGapMap: [
+        {
+          changedFilePath: "src/order.ts",
+          aspect: "happy-path" as const,
+          status: "partial" as const,
+          coveredBy: ["tests/e2e/flaky/order.spec.ts"],
+          explorationPriority: "medium" as const,
+          stabilityNotes: ["tests/e2e/flaky/order.spec.ts: flaky (path:flaky)"],
+        },
+      ],
       missingLayers: [],
       mappedAt: "2026-04-05T00:00:00Z",
       createdAt: "2026-04-05T00:00:00Z",
@@ -828,12 +837,12 @@ describe("handoff tool", () => {
 
     const notes = collectStabilityNotesFromTestMapping(testMapping);
 
-    expect(notes).toHaveLength(2);
+    // Only flaky/order.spec.ts should appear because it's in coveredBy.
+    // quarantine/payment.spec.ts is a candidate but NOT in any coveredBy,
+    // so it must NOT appear as an "existing test note".
+    expect(notes).toHaveLength(1);
     expect(notes[0].testPath).toBe("tests/e2e/flaky/order.spec.ts");
     expect(notes[0].stability).toBe("flaky");
-    expect(notes[1].testPath).toBe("tests/quarantine/payment.spec.ts");
-    expect(notes[1].stability).toBe("quarantined");
-    expect(notes[1].note).toContain("決済 API");
   });
 
   it("collectStabilityNotesFromTestMapping returns empty for all stable", () => {

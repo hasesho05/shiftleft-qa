@@ -304,6 +304,7 @@ cli
       });
 
       return {
+        prIntakeId: result.persisted.id,
         provider: result.persisted.provider,
         repository: result.persisted.repository,
         prNumber: result.persisted.prNumber,
@@ -451,6 +452,7 @@ cli
       });
 
       return {
+        riskAssessmentId: result.persisted.id,
         testMappingId: result.persisted.testMappingId,
         riskScores: result.persisted.riskScores.length,
         frameworkSelections: result.persisted.frameworkSelections.length,
@@ -574,6 +576,7 @@ cli
       });
 
       return {
+        sessionChartersId: result.persisted.id,
         riskAssessmentId: result.persisted.riskAssessmentId,
         chartersGenerated: result.persisted.charters.length,
         pruning: {

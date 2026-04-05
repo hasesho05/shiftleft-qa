@@ -28,8 +28,18 @@ function makeTestAsset(
   path: string,
   layer: TestAsset["layer"],
   relatedTo: string[],
+  stability: TestAsset["stability"] = "unknown",
+  stabilitySignals: string[] = [],
 ): TestAsset {
-  return { path, layer, relatedTo, confidence: 0.8 };
+  return {
+    path,
+    layer,
+    relatedTo,
+    confidence: 0.8,
+    stability,
+    stabilitySignals,
+    stabilityNotes: [],
+  };
 }
 
 function makeTestSummary(
@@ -166,6 +176,107 @@ describe("buildCoverageGapMap", () => {
       expect(gap.status).toBe("uncovered");
       expect(gap.explorationPriority).toBe("high");
     }
+  });
+
+  it("downgrades covered to partial when covering test is flaky", () => {
+    const fileAnalyses = [makeFileAnalysis("src/auth.ts")];
+    const testAssets = [
+      makeTestAsset(
+        "tests/unit/auth.test.ts",
+        "unit",
+        ["src/auth.ts"],
+        "flaky",
+        ["path:flaky"],
+      ),
+    ];
+    const testSummaries = [
+      makeTestSummary("tests/unit/auth.test.ts", "unit", [
+        "happy-path",
+        "error-path",
+      ]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+
+    const happyPath = gaps.find(
+      (g) => g.changedFilePath === "src/auth.ts" && g.aspect === "happy-path",
+    );
+    expect(happyPath?.status).toBe("partial");
+    expect(happyPath?.stabilityNotes).toBeDefined();
+    expect(happyPath?.stabilityNotes?.length).toBeGreaterThan(0);
+  });
+
+  it("adds stability notes when covering test is quarantined", () => {
+    const fileAnalyses = [makeFileAnalysis("src/payment.ts")];
+    const testAssets = [
+      makeTestAsset(
+        "tests/quarantine/payment.test.ts",
+        "unit",
+        ["src/payment.ts"],
+        "quarantined",
+        ["path:quarantine"],
+      ),
+    ];
+    const testSummaries = [
+      makeTestSummary("tests/quarantine/payment.test.ts", "unit", [
+        "happy-path",
+      ]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+
+    const happyPath = gaps.find(
+      (g) =>
+        g.changedFilePath === "src/payment.ts" && g.aspect === "happy-path",
+    );
+    expect(happyPath?.status).toBe("partial");
+    expect(happyPath?.stabilityNotes).toBeDefined();
+    expect(happyPath?.stabilityNotes?.length).toBeGreaterThan(0);
+  });
+
+  it("does not downgrade coverage for stable tests", () => {
+    const fileAnalyses = [makeFileAnalysis("src/auth.ts")];
+    const testAssets = [
+      makeTestAsset(
+        "tests/unit/auth.test.ts",
+        "unit",
+        ["src/auth.ts"],
+        "stable",
+      ),
+    ];
+    const testSummaries = [
+      makeTestSummary("tests/unit/auth.test.ts", "unit", ["happy-path"]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+
+    const happyPath = gaps.find(
+      (g) => g.changedFilePath === "src/auth.ts" && g.aspect === "happy-path",
+    );
+    expect(happyPath?.status).toBe("covered");
+    expect(happyPath?.stabilityNotes ?? []).toHaveLength(0);
+  });
+
+  it("preserves unknown stability as-is (no downgrade)", () => {
+    const fileAnalyses = [makeFileAnalysis("src/auth.ts")];
+    const testAssets = [
+      makeTestAsset(
+        "tests/unit/auth.test.ts",
+        "unit",
+        ["src/auth.ts"],
+        "unknown",
+      ),
+    ];
+    const testSummaries = [
+      makeTestSummary("tests/unit/auth.test.ts", "unit", ["happy-path"]),
+    ];
+
+    const gaps = buildCoverageGapMap(fileAnalyses, testAssets, testSummaries);
+
+    const happyPath = gaps.find(
+      (g) => g.changedFilePath === "src/auth.ts" && g.aspect === "happy-path",
+    );
+    expect(happyPath?.status).toBe("covered");
   });
 
   it("handles multiple files with different coverage", () => {

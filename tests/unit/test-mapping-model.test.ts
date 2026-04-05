@@ -55,7 +55,12 @@ describe("testAssetSchema", () => {
     };
 
     const result = testAssetSchema.parse(input);
-    expect(result).toEqual(input);
+    expect(result).toEqual({
+      ...input,
+      stability: "unknown",
+      stabilitySignals: [],
+      stabilityNotes: [],
+    });
   });
 
   it("rejects missing path", () => {
@@ -140,7 +145,7 @@ describe("coverageGapEntrySchema", () => {
     };
 
     const result = coverageGapEntrySchema.parse(input);
-    expect(result).toEqual(input);
+    expect(result).toEqual({ ...input, stabilityNotes: [] });
   });
 
   it("parses an uncovered entry", () => {
@@ -152,7 +157,10 @@ describe("coverageGapEntrySchema", () => {
       explorationPriority: "high",
     };
 
-    expect(coverageGapEntrySchema.parse(input)).toEqual(input);
+    expect(coverageGapEntrySchema.parse(input)).toEqual({
+      ...input,
+      stabilityNotes: [],
+    });
   });
 
   it("parses a partial entry", () => {
@@ -164,7 +172,10 @@ describe("coverageGapEntrySchema", () => {
       explorationPriority: "medium",
     };
 
-    expect(coverageGapEntrySchema.parse(input)).toEqual(input);
+    expect(coverageGapEntrySchema.parse(input)).toEqual({
+      ...input,
+      stabilityNotes: [],
+    });
   });
 });
 

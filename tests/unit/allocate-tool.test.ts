@@ -212,12 +212,18 @@ function createSampleTestMapping(
         layer: "unit",
         relatedTo: ["src/features/flags.ts"],
         confidence: 0.9,
+        stability: "unknown",
+        stabilitySignals: [],
+        stabilityNotes: [],
       },
       {
         path: "tests/unit/format.test.ts",
         layer: "unit",
         relatedTo: ["scripts/format.ts"],
         confidence: 0.9,
+        stability: "unknown",
+        stabilitySignals: [],
+        stabilityNotes: [],
       },
     ],
     testSummaries: [
@@ -254,6 +260,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "high",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "src/validators/userInput.ts",
@@ -261,6 +268,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "high",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "src/clients/paymentGateway.ts",
@@ -268,6 +276,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "high",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "src/clients/paymentGateway.ts",
@@ -275,6 +284,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "high",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "src/pages/Checkout.tsx",
@@ -282,6 +292,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "high",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "src/components/Button.tsx",
@@ -289,6 +300,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "medium",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "scripts/format.ts",
@@ -296,6 +308,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "low",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "scripts/format.ts",
@@ -303,6 +316,7 @@ function createSampleTestMapping(
         status: "covered",
         coveredBy: ["tests/unit/format.test.ts"],
         explorationPriority: "low",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "scripts/format.ts",
@@ -310,6 +324,7 @@ function createSampleTestMapping(
         status: "covered",
         coveredBy: ["tests/unit/format.test.ts"],
         explorationPriority: "low",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "scripts/format.ts",
@@ -317,6 +332,7 @@ function createSampleTestMapping(
         status: "covered",
         coveredBy: ["tests/unit/format.test.ts"],
         explorationPriority: "low",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "scripts/format.ts",
@@ -324,6 +340,7 @@ function createSampleTestMapping(
         status: "covered",
         coveredBy: ["tests/unit/format.test.ts"],
         explorationPriority: "low",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "scripts/format.ts",
@@ -331,6 +348,7 @@ function createSampleTestMapping(
         status: "covered",
         coveredBy: ["tests/unit/format.test.ts"],
         explorationPriority: "low",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "src/utility.ts",
@@ -338,6 +356,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "high",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "src/features/flags.ts",
@@ -345,6 +364,7 @@ function createSampleTestMapping(
         status: "covered",
         coveredBy: ["tests/unit/flags.test.ts"],
         explorationPriority: "low",
+        stabilityNotes: [],
       },
       {
         changedFilePath: "src/features/flags.ts",
@@ -352,6 +372,7 @@ function createSampleTestMapping(
         status: "covered",
         coveredBy: ["tests/unit/flags.test.ts"],
         explorationPriority: "low",
+        stabilityNotes: [],
       },
     ],
     missingLayers: ["e2e", "visual"],

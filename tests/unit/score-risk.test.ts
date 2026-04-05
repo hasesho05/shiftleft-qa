@@ -24,6 +24,7 @@ function makeGapEntry(
     status: "uncovered",
     coveredBy: [],
     explorationPriority: "high",
+    stabilityNotes: [],
     ...overrides,
   };
 }

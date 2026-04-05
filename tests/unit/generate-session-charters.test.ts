@@ -28,6 +28,7 @@ function createGap(
     status: "uncovered",
     coveredBy: [],
     explorationPriority: "high",
+    stabilityNotes: [],
     ...overrides,
   };
 }

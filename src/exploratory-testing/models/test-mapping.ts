@@ -48,12 +48,21 @@ export const EXPLORATION_PRIORITY_ORDER: Record<ExplorationPriority, number> = {
   low: 1,
 };
 
+export const stabilityStatusSchema = schema(
+  v.picklist(["stable", "flaky", "quarantined", "unknown"]),
+);
+
+export type StabilityStatus = v.InferOutput<typeof stabilityStatusSchema>;
+
 export const testAssetSchema = schema(
   v.object({
     path: nonEmptyString(),
     layer: testLayerSchema,
     relatedTo: v.array(nonEmptyString()),
     confidence: confidenceSchema,
+    stability: v.optional(stabilityStatusSchema, "unknown"),
+    stabilitySignals: v.optional(v.array(v.string()), []),
+    stabilityNotes: v.optional(v.array(v.string()), []),
   }),
 );
 
@@ -78,6 +87,7 @@ export const coverageGapEntrySchema = schema(
     status: coverageStatusSchema,
     coveredBy: v.array(v.string()),
     explorationPriority: explorationPrioritySchema,
+    stabilityNotes: v.optional(v.array(v.string()), []),
   }),
 );
 

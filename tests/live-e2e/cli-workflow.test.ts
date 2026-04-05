@@ -467,17 +467,18 @@ describe.skipIf(!ghAuthAvailable)(
   "CLI E2E: skill-first workflow",
   { timeout: 180_000 },
   () => {
+    let workspaceRoot: string | undefined;
     let r: CliPipelineResults;
 
     beforeAll(async () => {
-      const workspaceRoot = await cloneAndPrepareWorkspace();
+      workspaceRoot = await cloneAndPrepareWorkspace();
       r = await runCliPipeline(workspaceRoot);
     }, 180_000);
 
     afterAll(async () => {
-      if (r) {
+      if (workspaceRoot) {
         const { rm } = await import("node:fs/promises");
-        await rm(r.workspaceRoot, { recursive: true, force: true });
+        await rm(workspaceRoot, { recursive: true, force: true });
       }
     });
 

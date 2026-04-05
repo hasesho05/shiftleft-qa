@@ -409,16 +409,18 @@ describe.skipIf(!ghAuthAvailable)(
   "live E2E: canonical PR",
   { timeout: 120_000 },
   () => {
+    let workspaceRoot: string | undefined;
     let result: LivePipelineResult;
 
     beforeAll(async () => {
       const workspace = await cloneAndPrepareWorkspace();
+      workspaceRoot = workspace.root;
       result = await runLivePipeline(workspace);
     }, 120_000);
 
     afterAll(async () => {
-      if (result) {
-        await cleanupTestWorkspace(result.workspaceRoot);
+      if (workspaceRoot) {
+        await cleanupTestWorkspace(workspaceRoot);
       }
     });
 

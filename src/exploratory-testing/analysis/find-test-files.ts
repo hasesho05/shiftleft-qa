@@ -2,6 +2,25 @@ import posixPath from "node:path/posix";
 
 import type { ChangedFile } from "../models/pr-intake";
 import type { TestAsset, TestLayer } from "../models/test-mapping";
+import { detectStabilityFromPath } from "./detect-stability-signals";
+
+function makeAsset(
+  path: string,
+  layer: TestLayer,
+  relatedTo: readonly string[],
+  confidence: number,
+): TestAsset {
+  const detection = detectStabilityFromPath(path);
+  return {
+    path,
+    layer,
+    relatedTo: [...relatedTo],
+    confidence,
+    stability: detection.stability,
+    stabilitySignals: [...detection.signals],
+    stabilityNotes: [],
+  };
+}
 
 export function findTestAssets(
   changedFiles: readonly ChangedFile[],
@@ -84,48 +103,58 @@ function inferUnitTests(
   const candidates: TestAsset[] = [];
 
   // Co-located: src/middleware/auth.test.ts
-  candidates.push({
-    path: posixPath.join(dir, `${name}.test${ext}`),
-    layer: "unit",
-    relatedTo: [sourcePath],
-    confidence: 0.7,
-  });
+  candidates.push(
+    makeAsset(
+      posixPath.join(dir, `${name}.test${ext}`),
+      "unit",
+      [sourcePath],
+      0.7,
+    ),
+  );
 
   // Spec style: src/middleware/auth.spec.ts
-  candidates.push({
-    path: posixPath.join(dir, `${name}.spec${ext}`),
-    layer: "unit",
-    relatedTo: [sourcePath],
-    confidence: 0.6,
-  });
+  candidates.push(
+    makeAsset(
+      posixPath.join(dir, `${name}.spec${ext}`),
+      "unit",
+      [sourcePath],
+      0.6,
+    ),
+  );
 
   // tests/unit/<relative>/<name>.test.ts
   if (sourcePath.startsWith("src/")) {
     const relativeDir = posixPath.dirname(sourcePath.slice("src/".length));
     const testBase =
       relativeDir === "." ? "tests/unit" : `tests/unit/${relativeDir}`;
-    candidates.push({
-      path: posixPath.join(testBase, `${name}.test${ext}`),
-      layer: "unit",
-      relatedTo: [sourcePath],
-      confidence: 0.6,
-    });
+    candidates.push(
+      makeAsset(
+        posixPath.join(testBase, `${name}.test${ext}`),
+        "unit",
+        [sourcePath],
+        0.6,
+      ),
+    );
   } else {
-    candidates.push({
-      path: posixPath.join("tests", `${name}.test${ext}`),
-      layer: "unit",
-      relatedTo: [sourcePath],
-      confidence: 0.5,
-    });
+    candidates.push(
+      makeAsset(
+        posixPath.join("tests", `${name}.test${ext}`),
+        "unit",
+        [sourcePath],
+        0.5,
+      ),
+    );
   }
 
   // __tests__/<name>.test.ts
-  candidates.push({
-    path: posixPath.join(dir, "__tests__", `${name}.test${ext}`),
-    layer: "unit",
-    relatedTo: [sourcePath],
-    confidence: 0.55,
-  });
+  candidates.push(
+    makeAsset(
+      posixPath.join(dir, "__tests__", `${name}.test${ext}`),
+      "unit",
+      [sourcePath],
+      0.55,
+    ),
+  );
 
   return candidates;
 }
@@ -133,26 +162,13 @@ function inferUnitTests(
 function inferE2ETests(sourcePath: string, name: string): readonly TestAsset[] {
   const candidates: TestAsset[] = [];
 
-  candidates.push({
-    path: `e2e/${name}.spec.ts`,
-    layer: "e2e",
-    relatedTo: [sourcePath],
-    confidence: 0.4,
-  });
-
-  candidates.push({
-    path: `tests/e2e/${name}.spec.ts`,
-    layer: "e2e",
-    relatedTo: [sourcePath],
-    confidence: 0.4,
-  });
-
-  candidates.push({
-    path: `cypress/e2e/${name}.cy.ts`,
-    layer: "e2e",
-    relatedTo: [sourcePath],
-    confidence: 0.35,
-  });
+  candidates.push(makeAsset(`e2e/${name}.spec.ts`, "e2e", [sourcePath], 0.4));
+  candidates.push(
+    makeAsset(`tests/e2e/${name}.spec.ts`, "e2e", [sourcePath], 0.4),
+  );
+  candidates.push(
+    makeAsset(`cypress/e2e/${name}.cy.ts`, "e2e", [sourcePath], 0.35),
+  );
 
   return candidates;
 }
@@ -165,19 +181,22 @@ function inferVisualTests(
 ): readonly TestAsset[] {
   const candidates: TestAsset[] = [];
 
-  candidates.push({
-    path: posixPath.join(dir, `${name}.visual${ext}`),
-    layer: "visual",
-    relatedTo: [sourcePath],
-    confidence: 0.4,
-  });
-
-  candidates.push({
-    path: `tests/visual/${name}.visual${ext}`,
-    layer: "visual",
-    relatedTo: [sourcePath],
-    confidence: 0.35,
-  });
+  candidates.push(
+    makeAsset(
+      posixPath.join(dir, `${name}.visual${ext}`),
+      "visual",
+      [sourcePath],
+      0.4,
+    ),
+  );
+  candidates.push(
+    makeAsset(
+      `tests/visual/${name}.visual${ext}`,
+      "visual",
+      [sourcePath],
+      0.35,
+    ),
+  );
 
   return candidates;
 }
@@ -191,19 +210,22 @@ function inferStorybookStories(
   const storyExt = ext === ".tsx" || ext === ".jsx" ? ext : ".tsx";
   const candidates: TestAsset[] = [];
 
-  candidates.push({
-    path: posixPath.join(dir, `${name}.stories${storyExt}`),
-    layer: "storybook",
-    relatedTo: [sourcePath],
-    confidence: 0.6,
-  });
-
-  candidates.push({
-    path: `stories/${name}.stories${storyExt}`,
-    layer: "storybook",
-    relatedTo: [sourcePath],
-    confidence: 0.4,
-  });
+  candidates.push(
+    makeAsset(
+      posixPath.join(dir, `${name}.stories${storyExt}`),
+      "storybook",
+      [sourcePath],
+      0.6,
+    ),
+  );
+  candidates.push(
+    makeAsset(
+      `stories/${name}.stories${storyExt}`,
+      "storybook",
+      [sourcePath],
+      0.4,
+    ),
+  );
 
   return candidates;
 }
@@ -211,19 +233,12 @@ function inferStorybookStories(
 function inferAPITests(sourcePath: string, name: string): readonly TestAsset[] {
   const candidates: TestAsset[] = [];
 
-  candidates.push({
-    path: `tests/api/${name}.test.ts`,
-    layer: "api",
-    relatedTo: [sourcePath],
-    confidence: 0.5,
-  });
-
-  candidates.push({
-    path: `tests/api/${name}.spec.ts`,
-    layer: "api",
-    relatedTo: [sourcePath],
-    confidence: 0.45,
-  });
+  candidates.push(
+    makeAsset(`tests/api/${name}.test.ts`, "api", [sourcePath], 0.5),
+  );
+  candidates.push(
+    makeAsset(`tests/api/${name}.spec.ts`, "api", [sourcePath], 0.45),
+  );
 
   return candidates;
 }

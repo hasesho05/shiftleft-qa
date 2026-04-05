@@ -372,10 +372,7 @@ function isUiSource(path: string): boolean {
     /\/(components|views|pages|layouts|routes|screens|flows)\//i.test(path) &&
     /\.[jt]sx?$/i.test(path);
 
-  return (
-    isUiExt ||
-    isUiDir
-  );
+  return isUiExt || isUiDir;
 }
 
 function isUiComponentSource(path: string): boolean {
@@ -388,9 +385,7 @@ function isUiFlowSource(path: string): boolean {
   const isFlowDir = /\/(pages|views|routes|screens|flows)\//i.test(path);
   const hasFlowKeyword = /(?:checkout|login|signup|cart|profile)/i.test(path);
 
-  return (
-    (isFlowDir || hasFlowKeyword) && isUiSource(path)
-  );
+  return (isFlowDir || hasFlowKeyword) && isUiSource(path);
 }
 
 function isStaticAsset(path: string): boolean {

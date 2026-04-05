@@ -8,6 +8,7 @@ import {
   type PersistedChangeAnalysis,
   type PersistedPrIntake,
   type PersistedSession,
+  type PersistedTestMapping,
   countAllocationItemsByDestination,
   findChangeAnalysisById,
   findIntentContext,
@@ -20,6 +21,11 @@ import {
 } from "../db/workspace-repository";
 import { escapePipe } from "../lib/markdown";
 import { renderIntentContextLines } from "../lib/render-intent-context";
+import {
+  type StabilityNote,
+  collectStabilityNotesFromTestMapping,
+  renderStabilityNotesMarkdown,
+} from "../lib/render-stability-notes";
 import {
   type AllocationDestinationCounts,
   type ConfidenceBucket,
@@ -113,6 +119,7 @@ export type AddHandoffCommentRawResult = {
 type HandoffContext = {
   readonly prIntake: PersistedPrIntake;
   readonly changeAnalysis: PersistedChangeAnalysis;
+  readonly testMapping: PersistedTestMapping;
   readonly items: readonly PersistedAllocationItem[];
   readonly counts: AllocationDestinationCounts;
   readonly intentContext: IntentContext | null;
@@ -129,6 +136,9 @@ export async function generateHandoffMarkdown(
     fileAnalyses: context.changeAnalysis.fileAnalyses,
     allocationItems: context.items,
   });
+  const stabilityNotes = collectStabilityNotesFromTestMapping(
+    context.testMapping,
+  );
 
   return {
     riskAssessmentId: input.riskAssessmentId,
@@ -136,7 +146,7 @@ export async function generateHandoffMarkdown(
     markdown: renderHandoffMarkdown(
       context.prIntake,
       input.riskAssessmentId,
-      { sections, summary, applicability },
+      { sections, summary, applicability, stabilityNotes },
       context.intentContext ?? undefined,
     ),
     sections,
@@ -259,6 +269,8 @@ export function groupBySection(
   };
 }
 
+export type { StabilityNote };
+
 export function renderHandoffMarkdown(
   prIntake: PersistedPrIntake,
   riskAssessmentId: number,
@@ -266,6 +278,7 @@ export function renderHandoffMarkdown(
     readonly sections: HandoffSections;
     readonly summary: HandoffSummary;
     readonly applicability?: LayerApplicabilityAssessment;
+    readonly stabilityNotes?: readonly StabilityNote[];
   },
   intentContext?: IntentContext,
 ): string {
@@ -310,6 +323,7 @@ export function renderHandoffMarkdown(
     "### 🔍 Manual Exploration Required",
     ...renderManualSection(input.sections.manualExploration),
     "",
+    ...renderStabilityNotesSection(input.stabilityNotes ?? []),
     "### Notes",
     "",
     "> These are heuristic recommendations derived from code, diff, and test analysis — not confirmed decisions. Confidence levels reflect the strength of available signals. Use your judgement to override where appropriate.",
@@ -370,6 +384,25 @@ function renderIntentContextSection(
     return [];
   }
   return [...base, "---", ""];
+}
+
+export { collectStabilityNotesFromTestMapping };
+
+function renderStabilityNotesSection(
+  notes: readonly StabilityNote[],
+): readonly string[] {
+  if (notes.length === 0) {
+    return [];
+  }
+
+  return [
+    "---",
+    "",
+    "### ⚠ 既存テストの注意点",
+    "",
+    ...renderStabilityNotesMarkdown(notes),
+    "",
+  ];
 }
 
 const APPLICABILITY_LABELS = {
@@ -575,6 +608,7 @@ async function resolveHandoffContext(
   return {
     prIntake,
     changeAnalysis,
+    testMapping,
     items,
     counts,
     intentContext,

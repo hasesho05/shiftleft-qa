@@ -19,6 +19,7 @@ import {
   saveTestMapping,
   updateSessionStatus,
 } from "../../src/exploratory-testing/db/workspace-repository";
+import { collectStabilityNotesFromTestMapping } from "../../src/exploratory-testing/lib/render-stability-notes";
 import type { AllocationItem } from "../../src/exploratory-testing/models/allocation";
 import type { ChangeAnalysisResult } from "../../src/exploratory-testing/models/change-analysis";
 import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
@@ -115,6 +116,7 @@ function createSampleTestMapping(
         status: "uncovered",
         coveredBy: [],
         explorationPriority: "high",
+        stabilityNotes: [],
       },
     ],
     missingLayers: ["e2e", "visual"],
@@ -628,6 +630,7 @@ describe("handoff tool", () => {
           status: "uncovered",
           coveredBy: [],
           explorationPriority: "medium",
+          stabilityNotes: [],
         },
       ],
       missingLayers: ["e2e", "visual", "api"],
@@ -693,6 +696,227 @@ describe("handoff tool", () => {
       "差分は UI / asset 中心で、service boundary を跨ぐ変更 signal は強くありません。",
     );
     expect(result.markdown).toContain("**visual**: `primary`");
+  });
+
+  it("renders stability notes section when flaky tests exist", () => {
+    const prIntake = {
+      provider: "github" as const,
+      repository: "owner/repo",
+      prNumber: 42,
+      title: "Payment retry",
+      description: "",
+      author: "dev",
+      baseBranch: "main",
+      headBranch: "feature",
+      headSha: "abc123",
+      linkedIssues: [],
+      changedFiles: [],
+      reviewComments: [],
+    };
+
+    const markdown = renderHandoffMarkdown(
+      prIntake as unknown as Parameters<typeof renderHandoffMarkdown>[0],
+      1,
+      {
+        sections: {
+          alreadyCovered: [],
+          shouldAutomate: [],
+          manualExploration: [],
+        },
+        summary: {
+          totalItems: 0,
+          manualCount: 0,
+          automateCount: 0,
+          coveredCount: 0,
+        },
+        stabilityNotes: [
+          {
+            testPath: "tests/e2e/flaky/order.spec.ts",
+            stability: "flaky",
+            signals: ["path:flaky"],
+            note: "このテストは不安定な挙動が報告されています",
+          },
+        ],
+      },
+    );
+
+    expect(markdown).toContain("### ⚠ 既存テストの注意点");
+    expect(markdown).toContain("tests/e2e/flaky/order.spec.ts");
+    expect(markdown).toContain("不安定な挙動");
+    expect(markdown).toContain("手動確認を優先する");
+  });
+
+  it("omits stability notes section when no unstable tests exist", () => {
+    const prIntake = {
+      provider: "github" as const,
+      repository: "owner/repo",
+      prNumber: 42,
+      title: "Clean PR",
+      description: "",
+      author: "dev",
+      baseBranch: "main",
+      headBranch: "feature",
+      headSha: "abc123",
+      linkedIssues: [],
+      changedFiles: [],
+      reviewComments: [],
+    };
+
+    const markdown = renderHandoffMarkdown(
+      prIntake as unknown as Parameters<typeof renderHandoffMarkdown>[0],
+      1,
+      {
+        sections: {
+          alreadyCovered: [],
+          shouldAutomate: [],
+          manualExploration: [],
+        },
+        summary: {
+          totalItems: 0,
+          manualCount: 0,
+          automateCount: 0,
+          coveredCount: 0,
+        },
+        stabilityNotes: [],
+      },
+    );
+
+    expect(markdown).not.toContain("既存テストの注意点");
+  });
+
+  it("collectStabilityNotesFromTestMapping only includes assets referenced in coveredBy", () => {
+    const testMapping = {
+      id: 1,
+      prIntakeId: 1,
+      changeAnalysisId: 1,
+      testAssets: [
+        {
+          path: "tests/unit/auth.test.ts",
+          layer: "unit" as const,
+          relatedTo: ["src/auth.ts"],
+          confidence: 0.9,
+          stability: "stable" as const,
+          stabilitySignals: [],
+          stabilityNotes: [],
+        },
+        {
+          path: "tests/e2e/flaky/order.spec.ts",
+          layer: "e2e" as const,
+          relatedTo: ["src/order.ts"],
+          confidence: 0.7,
+          stability: "flaky" as const,
+          stabilitySignals: ["path:flaky"],
+          stabilityNotes: [],
+        },
+        {
+          path: "tests/quarantine/payment.spec.ts",
+          layer: "unit" as const,
+          relatedTo: ["src/payment.ts"],
+          confidence: 0.8,
+          stability: "quarantined" as const,
+          stabilitySignals: ["path:quarantine"],
+          stabilityNotes: ["決済 API のタイムアウトが環境依存"],
+        },
+      ],
+      testSummaries: [],
+      coverageGapMap: [
+        {
+          changedFilePath: "src/order.ts",
+          aspect: "happy-path" as const,
+          status: "partial" as const,
+          coveredBy: ["tests/e2e/flaky/order.spec.ts"],
+          explorationPriority: "medium" as const,
+          stabilityNotes: ["tests/e2e/flaky/order.spec.ts: flaky (path:flaky)"],
+        },
+      ],
+      missingLayers: [],
+      mappedAt: "2026-04-05T00:00:00Z",
+      createdAt: "2026-04-05T00:00:00Z",
+      updatedAt: "2026-04-05T00:00:00Z",
+    };
+
+    const notes = collectStabilityNotesFromTestMapping(testMapping);
+
+    // Only flaky/order.spec.ts should appear because it's in coveredBy.
+    // quarantine/payment.spec.ts is a candidate but NOT in any coveredBy,
+    // so it must NOT appear as an "existing test note".
+    expect(notes).toHaveLength(1);
+    expect(notes[0].testPath).toBe("tests/e2e/flaky/order.spec.ts");
+    expect(notes[0].stability).toBe("flaky");
+  });
+
+  it("collectStabilityNotesFromTestMapping returns empty for all stable", () => {
+    const testMapping = {
+      id: 1,
+      prIntakeId: 1,
+      changeAnalysisId: 1,
+      testAssets: [
+        {
+          path: "tests/unit/auth.test.ts",
+          layer: "unit" as const,
+          relatedTo: ["src/auth.ts"],
+          confidence: 0.9,
+          stability: "unknown" as const,
+          stabilitySignals: [],
+          stabilityNotes: [],
+        },
+      ],
+      testSummaries: [],
+      coverageGapMap: [],
+      missingLayers: [],
+      mappedAt: "2026-04-05T00:00:00Z",
+      createdAt: "2026-04-05T00:00:00Z",
+      updatedAt: "2026-04-05T00:00:00Z",
+    };
+
+    const notes = collectStabilityNotesFromTestMapping(testMapping);
+    expect(notes).toHaveLength(0);
+  });
+
+  it("renders quarantined handling note differently from flaky", () => {
+    const prIntake = {
+      provider: "github" as const,
+      repository: "owner/repo",
+      prNumber: 42,
+      title: "PR",
+      description: "",
+      author: "dev",
+      baseBranch: "main",
+      headBranch: "feature",
+      headSha: "abc123",
+      linkedIssues: [],
+      changedFiles: [],
+      reviewComments: [],
+    };
+
+    const markdown = renderHandoffMarkdown(
+      prIntake as unknown as Parameters<typeof renderHandoffMarkdown>[0],
+      1,
+      {
+        sections: {
+          alreadyCovered: [],
+          shouldAutomate: [],
+          manualExploration: [],
+        },
+        summary: {
+          totalItems: 0,
+          manualCount: 0,
+          automateCount: 0,
+          coveredCount: 0,
+        },
+        stabilityNotes: [
+          {
+            testPath: "tests/quarantine/payment.spec.ts",
+            stability: "quarantined",
+            signals: ["path:quarantine"],
+            note: "このテストは現在 quarantine 扱いです",
+          },
+        ],
+      },
+    );
+
+    expect(markdown).toContain("quarantine 扱い");
+    expect(markdown).toContain("依存しないこと");
   });
 
   it("builds destination counts consistent with the saved allocation data", async () => {

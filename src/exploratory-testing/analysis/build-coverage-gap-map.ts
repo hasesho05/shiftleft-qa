@@ -3,7 +3,9 @@ import type {
   CoverageAspect,
   CoverageConfidence,
   CoverageGapEntry,
+  CoverageStatus,
   ExplorationPriority,
+  StabilityStatus,
   TestAsset,
   TestLayer,
   TestSummary,
@@ -47,6 +49,11 @@ export function buildCoverageGapMap(
     summariesByAsset.set(summary.testAssetPath, list);
   }
 
+  const stabilityByAsset = new Map<string, TestAsset>();
+  for (const asset of testAssets) {
+    stabilityByAsset.set(asset.path, asset);
+  }
+
   const entries: CoverageGapEntry[] = [];
 
   for (const file of fileAnalyses) {
@@ -67,13 +74,12 @@ export function buildCoverageGapMap(
         aspect,
         "inferred",
       );
-      const status =
+      let status: CoverageStatus =
         confirmedCoverage.length > 0
           ? "covered"
           : inferredCoverage.length > 0
             ? "partial"
             : "uncovered";
-      const explorationPriority = derivePriority(status);
       const coveredBy =
         status === "covered"
           ? confirmedCoverage
@@ -81,12 +87,27 @@ export function buildCoverageGapMap(
             ? inferredCoverage
             : [];
 
+      const stabilityNotes = collectStabilityNotes(coveredBy, stabilityByAsset);
+
+      if (stabilityNotes.length > 0 && status === "covered") {
+        const hasStableConfirmed = coveredBy.some((testPath) => {
+          const asset = stabilityByAsset.get(testPath);
+          return asset !== undefined && !isUnstable(asset.stability);
+        });
+        if (!hasStableConfirmed) {
+          status = "partial";
+        }
+      }
+
+      const explorationPriority = derivePriority(status);
+
       entries.push({
         changedFilePath: file.path,
         aspect,
         status,
         coveredBy,
         explorationPriority,
+        stabilityNotes,
       });
     }
   }
@@ -167,6 +188,39 @@ function getApplicableAspects(
   }
 
   return [...aspects];
+}
+
+function isUnstable(stability: StabilityStatus | undefined): boolean {
+  return stability === "flaky" || stability === "quarantined";
+}
+
+function collectStabilityNotes(
+  coveringTestPaths: readonly string[],
+  assetsByPath: ReadonlyMap<string, TestAsset>,
+): string[] {
+  const notes: string[] = [];
+  const seen = new Set<string>();
+
+  for (const testPath of coveringTestPaths) {
+    if (seen.has(testPath)) {
+      continue;
+    }
+    seen.add(testPath);
+
+    const asset = assetsByPath.get(testPath);
+    if (!asset || !isUnstable(asset.stability)) {
+      continue;
+    }
+
+    const label = asset.stability === "quarantined" ? "quarantined" : "flaky";
+    const signalDesc =
+      asset.stabilitySignals.length > 0
+        ? ` (${asset.stabilitySignals.join(", ")})`
+        : "";
+    notes.push(`${testPath}: ${label}${signalDesc}`);
+  }
+
+  return notes;
 }
 
 function hasAnyCategory(

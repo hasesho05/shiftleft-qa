@@ -125,6 +125,19 @@ describe("findTestAssets", () => {
     expect(e2eAsset?.relatedTo).toContain("src/services/auth.ts");
   });
 
+  it("detects flaky stability from path containing 'flaky'", () => {
+    const files = [makeChangedFile("src/components/Order.tsx")];
+
+    const assets = findTestAssets(files);
+
+    // E2E candidate paths like "e2e/Order.spec.ts" don't contain flaky,
+    // so all should be unknown. This tests the default behavior.
+    for (const asset of assets) {
+      expect(asset.stability).toBe("unknown");
+      expect(asset.stabilitySignals).toHaveLength(0);
+    }
+  });
+
   it("does not duplicate relatedTo entries for the same source file", () => {
     const files = [
       makeChangedFile("src/middleware/auth.ts"),

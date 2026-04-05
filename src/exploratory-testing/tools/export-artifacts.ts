@@ -28,6 +28,10 @@ import {
 import { escapePipe } from "../lib/markdown";
 import { renderIntentContextLines } from "../lib/render-intent-context";
 import {
+  collectStabilityNotesFromTestMapping,
+  renderStabilityNotesMarkdown,
+} from "../lib/render-stability-notes";
+import {
   type AllocationDestination,
   type ConfidenceBucket,
   toConfidenceBucket,
@@ -578,6 +582,14 @@ function buildCoverageGapMap(data: CollectedData): string {
     for (const asset of testMapping.testAssets) {
       lines.push(`| ${escapePipe(asset.path)} | ${asset.layer} |`);
     }
+    lines.push("");
+  }
+
+  const stabilityNotes = collectStabilityNotesFromTestMapping(testMapping);
+
+  if (stabilityNotes.length > 0) {
+    lines.push("## 既存テストの注意点", "");
+    lines.push(...renderStabilityNotesMarkdown(stabilityNotes));
     lines.push("");
   }
 

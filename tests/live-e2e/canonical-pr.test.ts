@@ -396,302 +396,287 @@ async function runLivePipeline(workspace: {
 }
 
 // ---------------------------------------------------------------------------
-// Test suite
+// Top-level auth check — resolved before describe so skipIf works
 // ---------------------------------------------------------------------------
 
-describe("live E2E: canonical PR", { timeout: 120_000 }, () => {
-  let result: LivePipelineResult;
-  let skipped = false;
+const ghAuthAvailable = await isGhAuthenticated();
 
-  beforeAll(async () => {
-    const authenticated = await isGhAuthenticated();
-    if (!authenticated) {
-      skipped = true;
-      return;
-    }
+// ---------------------------------------------------------------------------
+// Test suite — skipped entirely when gh auth is not available
+// ---------------------------------------------------------------------------
 
-    const workspace = await cloneAndPrepareWorkspace();
-    result = await runLivePipeline(workspace);
-  }, 120_000);
+describe.skipIf(!ghAuthAvailable)(
+  "live E2E: canonical PR",
+  { timeout: 120_000 },
+  () => {
+    let result: LivePipelineResult;
 
-  afterAll(async () => {
-    if (!skipped && result) {
-      await cleanupTestWorkspace(result.workspaceRoot);
-    }
-  });
+    beforeAll(async () => {
+      const workspace = await cloneAndPrepareWorkspace();
+      result = await runLivePipeline(workspace);
+    }, 120_000);
 
-  // -----------------------------------------------------------------------
-  // LIVE-1: PR intake captures real metadata from gh CLI
-  // -----------------------------------------------------------------------
-  it("LIVE-1: pr-intake captures real metadata and intent context from gh CLI", () => {
-    if (skipped) return;
+    afterAll(async () => {
+      if (result) {
+        await cleanupTestWorkspace(result.workspaceRoot);
+      }
+    });
 
-    const { prIntake } = result;
+    // -----------------------------------------------------------------------
+    // LIVE-1: PR intake captures real metadata from gh CLI
+    // -----------------------------------------------------------------------
+    it("LIVE-1: pr-intake captures real metadata and intent context from gh CLI", () => {
+      const { prIntake } = result;
 
-    // Real repository and PR number
-    expect(prIntake.persisted.repository).toBe(CANONICAL_REPO);
-    expect(prIntake.persisted.prNumber).toBe(CANONICAL_PR_NUMBER);
+      // Real repository and PR number
+      expect(prIntake.persisted.repository).toBe(CANONICAL_REPO);
+      expect(prIntake.persisted.prNumber).toBe(CANONICAL_PR_NUMBER);
 
-    // Changed files from real PR
-    expect(prIntake.persisted.changedFiles.length).toBeGreaterThanOrEqual(
-      MIN_CHANGED_FILES,
-    );
+      // Changed files from real PR
+      expect(prIntake.persisted.changedFiles.length).toBeGreaterThanOrEqual(
+        MIN_CHANGED_FILES,
+      );
 
-    // Intent context was parsed from real PR description
-    expect(prIntake.intentContext).not.toBeNull();
-    expect(prIntake.intentContext?.extractionStatus).not.toBe("empty");
+      // Intent context was parsed from real PR description
+      expect(prIntake.intentContext).not.toBeNull();
+      expect(prIntake.intentContext?.extractionStatus).not.toBe("empty");
 
-    // Acceptance criteria extracted from the structured PR description
-    expect(
-      prIntake.intentContext?.acceptanceCriteria.length,
-      "Should extract acceptance criteria from canonical PR description",
-    ).toBeGreaterThan(0);
-
-    // Non-goals extracted
-    expect(
-      prIntake.intentContext?.nonGoals.length,
-      "Should extract non-goals from canonical PR description",
-    ).toBeGreaterThan(0);
-  });
-
-  // -----------------------------------------------------------------------
-  // LIVE-2: discover-context classifies files across multiple categories
-  // -----------------------------------------------------------------------
-  it("LIVE-2: discover-context classifies files with diverse categories and viewpoint seeds", () => {
-    if (skipped) return;
-
-    const { context } = result;
-
-    expect(context.persisted.fileAnalyses.length).toBeGreaterThanOrEqual(
-      MIN_CHANGED_FILES,
-    );
-
-    // Collect unique categories across all files
-    const allCategories = new Set(
-      context.persisted.fileAnalyses.flatMap((f) => f.categories),
-    );
-    expect(
-      allCategories.size,
-      `Expected >= ${MIN_CATEGORIES} categories, got: ${[...allCategories].join(", ")}`,
-    ).toBeGreaterThanOrEqual(MIN_CATEGORIES);
-
-    // Viewpoint seeds should be populated
-    const viewpointsWithSeeds = context.persisted.viewpointSeeds.filter(
-      (v) => v.seeds.length > 0,
-    );
-    expect(viewpointsWithSeeds.length).toBeGreaterThanOrEqual(
-      MIN_VIEWPOINTS_WITH_SEEDS,
-    );
-  });
-
-  // -----------------------------------------------------------------------
-  // LIVE-3: map-tests produces coverage gap map
-  // -----------------------------------------------------------------------
-  it("LIVE-3: map-tests produces coverage gap map with partial and gap entries", () => {
-    if (skipped) return;
-
-    const { mapping } = result;
-
-    expect(mapping.persisted.coverageGapMap.length).toBeGreaterThan(0);
-
-    // The sample repo has some tests, so we expect at least partial coverage
-    const statuses = mapping.persisted.coverageGapMap.map((e) => e.status);
-    const hasPartialOrCovered =
-      statuses.includes("partial") || statuses.includes("covered");
-    expect(
-      hasPartialOrCovered,
-      "Sample repo has tests; should produce at least partial coverage",
-    ).toBe(true);
-
-    // Should also have some uncovered aspects
-    const hasUncovered = statuses.includes("uncovered");
-    expect(
-      hasUncovered,
-      "Not all aspects should be covered — some uncovered entries expected",
-    ).toBe(true);
-  });
-
-  // -----------------------------------------------------------------------
-  // LIVE-4: assess-gaps selects diverse frameworks
-  // -----------------------------------------------------------------------
-  it("LIVE-4: assess-gaps selects diverse frameworks and generates exploration themes", () => {
-    if (skipped) return;
-
-    const { assess } = result;
-
-    expect(assess.persisted.frameworkSelections.length).toBeGreaterThan(0);
-
-    // Distinct frameworks
-    const uniqueFrameworks = new Set(
-      assess.persisted.frameworkSelections.map((s) => s.framework),
-    );
-    expect(uniqueFrameworks.size).toBeGreaterThanOrEqual(MIN_FRAMEWORKS);
-
-    // Exploration themes generated
-    expect(assess.persisted.explorationThemes.length).toBeGreaterThan(0);
-
-    // Each theme has required fields
-    for (const theme of assess.persisted.explorationThemes) {
-      expect(theme.title).toBeTruthy();
-      expect(theme.targetFiles.length).toBeGreaterThan(0);
-    }
-  });
-
-  // -----------------------------------------------------------------------
-  // LIVE-5: allocate distributes items across multiple destinations
-  // -----------------------------------------------------------------------
-  it("LIVE-5: allocation items carry confidence and distribute across destinations", () => {
-    if (skipped) return;
-
-    const { items, destinationCounts } = result.allocate;
-
-    expect(items.length).toBeGreaterThan(0);
-
-    // All items have valid confidence
-    for (const item of items) {
-      expect(item.confidence).toBeGreaterThan(0);
-      expect(item.confidence).toBeLessThanOrEqual(1);
-    }
-
-    // Distributed across multiple destinations
-    const populatedDestinations = Object.entries(destinationCounts).filter(
-      ([, count]) => count > 0,
-    );
-    expect(populatedDestinations.length).toBeGreaterThanOrEqual(
-      MIN_DISTINCT_DESTINATIONS,
-    );
-  });
-
-  // -----------------------------------------------------------------------
-  // LIVE-6: handoff markdown contains real intent context and layer headings
-  // -----------------------------------------------------------------------
-  it("LIVE-6: handoff markdown references canonical PR and contains intent context", () => {
-    if (skipped) return;
-
-    const { markdown } = result.handoffMarkdown;
-
-    expect(markdown.length).toBeGreaterThan(100);
-
-    // References the canonical PR
-    expect(markdown).toContain(`#${CANONICAL_PR_NUMBER}`);
-
-    // Contains the three handoff sections
-    expect(markdown).toContain("Already Covered");
-    expect(markdown).toContain("Should Automate");
-    expect(markdown).toContain("Manual Exploration Required");
-
-    // Contains confidence badges
-    const hasConfidenceBadge =
-      markdown.includes("🟢") ||
-      markdown.includes("🟡") ||
-      markdown.includes("🔴");
-    expect(hasConfidenceBadge, "Should include confidence badges").toBe(true);
-  });
-
-  // -----------------------------------------------------------------------
-  // LIVE-7: exported artifacts are complete and reference real PR data
-  // -----------------------------------------------------------------------
-  it("LIVE-7: export-artifacts produces all artifact files with real PR references", async () => {
-    if (skipped) return;
-
-    const { artifacts } = result.exportResult;
-
-    const artifactPaths = [
-      artifacts.explorationBrief,
-      artifacts.coverageGapMap,
-      artifacts.sessionCharters,
-      artifacts.findingsReport,
-      artifacts.automationCandidateReport,
-      artifacts.heuristicFeedbackReport,
-    ];
-
-    expect(artifactPaths).toHaveLength(EXPECTED_ARTIFACT_COUNT);
-
-    // All files exist and have content
-    const contents = await Promise.all(
-      artifactPaths.map((path) => readFile(path, "utf8")),
-    );
-
-    for (let i = 0; i < artifactPaths.length; i++) {
+      // Acceptance criteria extracted from the structured PR description
       expect(
-        contents[i].length,
-        `Artifact at ${artifactPaths[i]} is empty`,
-      ).toBeGreaterThan(50);
-    }
+        prIntake.intentContext?.acceptanceCriteria.length,
+        "Should extract acceptance criteria from canonical PR description",
+      ).toBeGreaterThan(0);
 
-    // Exploration brief references the real repo
-    const brief = contents[0];
-    expect(brief).toContain(`#${CANONICAL_PR_NUMBER}`);
-    expect(brief).toContain("Intent Context");
-    expect(brief).toContain("Guarantee-Oriented Layer Summary");
+      // Non-goals extracted
+      expect(
+        prIntake.intentContext?.nonGoals.length,
+        "Should extract non-goals from canonical PR description",
+      ).toBeGreaterThan(0);
+    });
 
-    // Heuristic feedback report exists
-    const feedbackReport = contents[5];
-    expect(feedbackReport).toContain("Heuristic Feedback Report");
-  });
+    // -----------------------------------------------------------------------
+    // LIVE-2: discover-context classifies files across multiple categories
+    // -----------------------------------------------------------------------
+    it("LIVE-2: discover-context classifies files with diverse categories and viewpoint seeds", () => {
+      const { context } = result;
 
-  // -----------------------------------------------------------------------
-  // LIVE-8: progress snapshots show all workflow steps
-  // -----------------------------------------------------------------------
-  it("LIVE-8: progress snapshots cover all 11 workflow steps", () => {
-    if (skipped) return;
+      expect(context.persisted.fileAnalyses.length).toBeGreaterThanOrEqual(
+        MIN_CHANGED_FILES,
+      );
 
-    const snapshots = listStepProgressSnapshots(result.databasePath);
-    expect(snapshots).toHaveLength(WORKFLOW_SKILLS.length);
+      // Collect unique categories across all files
+      const allCategories = new Set(
+        context.persisted.fileAnalyses.flatMap((f) => f.categories),
+      );
+      expect(
+        allCategories.size,
+        `Expected >= ${MIN_CATEGORIES} categories, got: ${[...allCategories].join(", ")}`,
+      ).toBeGreaterThanOrEqual(MIN_CATEGORIES);
 
-    // All steps have snapshots in workflow order
-    for (let i = 0; i < WORKFLOW_SKILLS.length; i++) {
-      expect(snapshots[i].stepName).toBe(WORKFLOW_SKILLS[i].name);
-    }
+      // Viewpoint seeds should be populated
+      const viewpointsWithSeeds = context.persisted.viewpointSeeds.filter(
+        (v) => v.seeds.length > 0,
+      );
+      expect(viewpointsWithSeeds.length).toBeGreaterThanOrEqual(
+        MIN_VIEWPOINTS_WITH_SEEDS,
+      );
+    });
 
-    // Most steps should be completed (handoff may be skipped)
-    const completedSteps = snapshots.filter((s) => s.status === "completed");
-    expect(completedSteps.length).toBeGreaterThanOrEqual(
-      WORKFLOW_SKILLS.length - 1,
-    );
-  });
+    // -----------------------------------------------------------------------
+    // LIVE-3: map-tests produces coverage gap map
+    // -----------------------------------------------------------------------
+    it("LIVE-3: map-tests produces coverage gap map with partial and gap entries", () => {
+      const { mapping } = result;
 
-  // -----------------------------------------------------------------------
-  // LIVE-9: DB records form a complete chain
-  // -----------------------------------------------------------------------
-  it("LIVE-9: DB records form a complete chain from pr-intake to findings", () => {
-    if (skipped) return;
+      expect(mapping.persisted.coverageGapMap.length).toBeGreaterThan(0);
 
-    // PR intake persisted
-    expect(result.prIntake.persisted.id).toBeGreaterThan(0);
+      // The sample repo has some tests, so we expect at least partial coverage
+      const statuses = mapping.persisted.coverageGapMap.map((e) => e.status);
+      const hasPartialOrCovered =
+        statuses.includes("partial") || statuses.includes("covered");
+      expect(
+        hasPartialOrCovered,
+        "Sample repo has tests; should produce at least partial coverage",
+      ).toBe(true);
 
-    // Intent context linked to PR intake
-    const intentContext = findIntentContext(
-      result.databasePath,
-      result.prIntake.persisted.id,
-    );
-    expect(intentContext).not.toBeNull();
+      // Should also have some uncovered aspects
+      const hasUncovered = statuses.includes("uncovered");
+      expect(
+        hasUncovered,
+        "Not all aspects should be covered — some uncovered entries expected",
+      ).toBe(true);
+    });
 
-    // Change analysis linked to PR intake
-    expect(result.context.persisted.id).toBeGreaterThan(0);
-    expect(result.context.persisted.prIntakeId).toBe(
-      result.prIntake.persisted.id,
-    );
+    // -----------------------------------------------------------------------
+    // LIVE-4: assess-gaps selects diverse frameworks
+    // -----------------------------------------------------------------------
+    it("LIVE-4: assess-gaps selects diverse frameworks and generates exploration themes", () => {
+      const { assess } = result;
 
-    // Test mapping linked to change analysis
-    expect(result.mapping.persisted.id).toBeGreaterThan(0);
+      expect(assess.persisted.frameworkSelections.length).toBeGreaterThan(0);
 
-    // Risk assessment linked to test mapping
-    expect(result.assess.persisted.id).toBeGreaterThan(0);
+      // Distinct frameworks
+      const uniqueFrameworks = new Set(
+        assess.persisted.frameworkSelections.map((s) => s.framework),
+      );
+      expect(uniqueFrameworks.size).toBeGreaterThanOrEqual(MIN_FRAMEWORKS);
 
-    // Allocation items exist
-    expect(result.allocate.items.length).toBeGreaterThan(0);
+      // Exploration themes generated
+      expect(assess.persisted.explorationThemes.length).toBeGreaterThan(0);
 
-    // Session charters exist
-    expect(result.charters.persisted.id).toBeGreaterThan(0);
-    expect(result.charters.persisted.charters.length).toBeGreaterThan(0);
+      // Each theme has required fields
+      for (const theme of assess.persisted.explorationThemes) {
+        expect(theme.title).toBeTruthy();
+        expect(theme.targetFiles.length).toBeGreaterThan(0);
+      }
+    });
 
-    // Session with observations
-    expect(result.session.session.id).toBeGreaterThan(0);
-    const observations = listObservations(
-      result.databasePath,
-      result.session.session.id,
-    );
-    expect(observations.length).toBe(2);
-  });
-});
+    // -----------------------------------------------------------------------
+    // LIVE-5: allocate distributes items across multiple destinations
+    // -----------------------------------------------------------------------
+    it("LIVE-5: allocation items carry confidence and distribute across destinations", () => {
+      const { items, destinationCounts } = result.allocate;
+
+      expect(items.length).toBeGreaterThan(0);
+
+      // All items have valid confidence
+      for (const item of items) {
+        expect(item.confidence).toBeGreaterThan(0);
+        expect(item.confidence).toBeLessThanOrEqual(1);
+      }
+
+      // Distributed across multiple destinations
+      const populatedDestinations = Object.entries(destinationCounts).filter(
+        ([, count]) => count > 0,
+      );
+      expect(populatedDestinations.length).toBeGreaterThanOrEqual(
+        MIN_DISTINCT_DESTINATIONS,
+      );
+    });
+
+    // -----------------------------------------------------------------------
+    // LIVE-6: handoff markdown contains real intent context and layer headings
+    // -----------------------------------------------------------------------
+    it("LIVE-6: handoff markdown references canonical PR and contains intent context", () => {
+      const { markdown } = result.handoffMarkdown;
+
+      expect(markdown.length).toBeGreaterThan(100);
+
+      // References the canonical PR
+      expect(markdown).toContain(`#${CANONICAL_PR_NUMBER}`);
+
+      // Contains the three handoff sections
+      expect(markdown).toContain("Already Covered");
+      expect(markdown).toContain("Should Automate");
+      expect(markdown).toContain("Manual Exploration Required");
+
+      // Contains confidence badges
+      const hasConfidenceBadge =
+        markdown.includes("🟢") ||
+        markdown.includes("🟡") ||
+        markdown.includes("🔴");
+      expect(hasConfidenceBadge, "Should include confidence badges").toBe(true);
+    });
+
+    // -----------------------------------------------------------------------
+    // LIVE-7: exported artifacts are complete and reference real PR data
+    // -----------------------------------------------------------------------
+    it("LIVE-7: export-artifacts produces all artifact files with real PR references", async () => {
+      const { artifacts } = result.exportResult;
+
+      const artifactPaths = [
+        artifacts.explorationBrief,
+        artifacts.coverageGapMap,
+        artifacts.sessionCharters,
+        artifacts.findingsReport,
+        artifacts.automationCandidateReport,
+        artifacts.heuristicFeedbackReport,
+      ];
+
+      expect(artifactPaths).toHaveLength(EXPECTED_ARTIFACT_COUNT);
+
+      // All files exist and have content
+      const contents = await Promise.all(
+        artifactPaths.map((path) => readFile(path, "utf8")),
+      );
+
+      for (let i = 0; i < artifactPaths.length; i++) {
+        expect(
+          contents[i].length,
+          `Artifact at ${artifactPaths[i]} is empty`,
+        ).toBeGreaterThan(50);
+      }
+
+      // Exploration brief references the real repo
+      const brief = contents[0];
+      expect(brief).toContain(`#${CANONICAL_PR_NUMBER}`);
+      expect(brief).toContain("Intent Context");
+      expect(brief).toContain("Guarantee-Oriented Layer Summary");
+
+      // Heuristic feedback report exists
+      const feedbackReport = contents[5];
+      expect(feedbackReport).toContain("Heuristic Feedback Report");
+    });
+
+    // -----------------------------------------------------------------------
+    // LIVE-8: progress snapshots show all workflow steps
+    // -----------------------------------------------------------------------
+    it("LIVE-8: progress snapshots cover all 11 workflow steps", () => {
+      const snapshots = listStepProgressSnapshots(result.databasePath);
+      expect(snapshots).toHaveLength(WORKFLOW_SKILLS.length);
+
+      // All steps have snapshots in workflow order
+      for (let i = 0; i < WORKFLOW_SKILLS.length; i++) {
+        expect(snapshots[i].stepName).toBe(WORKFLOW_SKILLS[i].name);
+      }
+
+      // Most steps should be completed (handoff may be skipped)
+      const completedSteps = snapshots.filter((s) => s.status === "completed");
+      expect(completedSteps.length).toBeGreaterThanOrEqual(
+        WORKFLOW_SKILLS.length - 1,
+      );
+    });
+
+    // -----------------------------------------------------------------------
+    // LIVE-9: DB records form a complete chain
+    // -----------------------------------------------------------------------
+    it("LIVE-9: DB records form a complete chain from pr-intake to findings", () => {
+      // PR intake persisted
+      expect(result.prIntake.persisted.id).toBeGreaterThan(0);
+
+      // Intent context linked to PR intake
+      const intentContext = findIntentContext(
+        result.databasePath,
+        result.prIntake.persisted.id,
+      );
+      expect(intentContext).not.toBeNull();
+
+      // Change analysis linked to PR intake
+      expect(result.context.persisted.id).toBeGreaterThan(0);
+      expect(result.context.persisted.prIntakeId).toBe(
+        result.prIntake.persisted.id,
+      );
+
+      // Test mapping linked to change analysis
+      expect(result.mapping.persisted.id).toBeGreaterThan(0);
+
+      // Risk assessment linked to test mapping
+      expect(result.assess.persisted.id).toBeGreaterThan(0);
+
+      // Allocation items exist
+      expect(result.allocate.items.length).toBeGreaterThan(0);
+
+      // Session charters exist
+      expect(result.charters.persisted.id).toBeGreaterThan(0);
+      expect(result.charters.persisted.charters.length).toBeGreaterThan(0);
+
+      // Session with observations
+      expect(result.session.session.id).toBeGreaterThan(0);
+      const observations = listObservations(
+        result.databasePath,
+        result.session.session.id,
+      );
+      expect(observations.length).toBe(2);
+    });
+  },
+);

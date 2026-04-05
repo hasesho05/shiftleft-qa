@@ -220,7 +220,11 @@ Issue #7 完了時点:
 
 ### 対象
 
-- **Sample Repository**: `hasesho05/shiftleft-qa-sample-app` (Go backend + React frontend)
+- **Sample Repository**: `hasesho05/shiftleft-qa-sample-app`
+  - Backend: Go (net/http) — domain / usecase / handler / middleware + Go test
+  - Frontend: Vite + React + TypeScript
+  - UI test asset: Storybook stories (`.stories.tsx`)
+  - Unit/component test: Vitest (frontend), Go test (backend)
 - **Canonical PR**: `#2` — task approval workflow の mixed PR（open のまま維持、merge しない）
 - **Canonical Issue**: `#1` — 構造化された acceptance criteria を持つ linked issue
 
@@ -237,6 +241,7 @@ Issue #7 完了時点:
 - `tests/live-e2e/config.ts` の定数を更新する
 - 変更ファイル数が `MIN_CHANGED_FILES` を下回らないようにする
 - PR description の `## User Story` / `## Acceptance Criteria` / `## Non-Goals` / `## QA Notes` 構造を保つ
+- stack 契約（Go backend + Vite + React + Storybook + Vitest）を維持する
 - breaking refresh が必要な場合は v2 PR を新設し、test 側の参照先も更新する
 
 ## Known Pitfalls

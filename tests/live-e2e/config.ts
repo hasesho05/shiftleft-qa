@@ -1,13 +1,21 @@
 /**
  * Configuration for the live E2E test against the canonical sample app repository.
  *
- * The sample app is a Go backend + React frontend task management application
- * hosted at hasesho05/shiftleft-qa-sample-app. The canonical PR adds an
- * approval workflow with role-based permissions, touching both backend and
- * frontend files.
+ * The sample app is a task management application hosted at
+ * hasesho05/shiftleft-qa-sample-app with the following stack contract:
+ *
+ *   - Backend:  Go (net/http) — domain / usecase / handler / middleware
+ *   - Frontend: Vite + React + TypeScript
+ *   - UI tests: Storybook stories (.stories.tsx)
+ *   - Unit/component tests: Vitest (frontend), Go test (backend)
+ *
+ * The canonical PR (#2) adds an approval workflow with role-based permissions,
+ * touching both backend and frontend files (mixed PR).
  *
  * These constants define the test target and minimum invariant thresholds.
  * Update them only when the canonical PR is intentionally refreshed.
+ * When refreshing, maintain the stack contract above and ensure all
+ * MIN_* thresholds still hold.
  */
 
 /** GitHub repository slug (owner/name). */

@@ -32,6 +32,9 @@ bun run format            # biome check --write .
 # 単体テスト1ファイルだけ
 bunx vitest run tests/unit/config.test.ts
 
+# Live E2E テスト（opt-in / gh 認証 + network 必要）
+bun run test:live-e2e
+
 # CLI 実行
 bun run dev --help
 bun run dev setup
@@ -204,6 +207,37 @@ Issue #7 完了時点:
 - `setup` / `db init` / `progress summary` / `progress handover` の CLI が存在
 - SQLite 初期化、WAL、`foreign_keys` 有効化が実装済み
 - workspace 初期化は冪等
+
+## Live E2E テスト
+
+`bun run test:live-e2e` で実行する opt-in のライブ E2E テスト。`bun run check` / `bun run test` には含まれない。
+
+### 前提条件
+
+- `gh auth login` で GitHub にログイン済みであること
+- `hasesho05/shiftleft-qa-sample-app` リポジトリにアクセスできること
+- ネットワーク接続があること
+
+### 対象
+
+- **Sample Repository**: `hasesho05/shiftleft-qa-sample-app` (Go backend + React frontend)
+- **Canonical PR**: `#2` — task approval workflow の mixed PR（open のまま維持、merge しない）
+- **Canonical Issue**: `#1` — 構造化された acceptance criteria を持つ linked issue
+
+### 設計方針
+
+- real `gh pr view` 経由で PR metadata を取得する（mock なし）
+- sample repo を temp dir に clone して workspace として使う
+- session/triage は synthetic observations（人間が入力する代わりのテスト用データ）
+- handoff は markdown 生成のみ（GitHub Issue への書き込みはしない）
+- 検証は structural invariant（下限チェック）で行い、full-text 固定はしない
+
+### Canonical PR を変更するとき
+
+- `tests/live-e2e/config.ts` の定数を更新する
+- 変更ファイル数が `MIN_CHANGED_FILES` を下回らないようにする
+- PR description の `## User Story` / `## Acceptance Criteria` / `## Non-Goals` / `## QA Notes` 構造を保つ
+- breaking refresh が必要な場合は v2 PR を新設し、test 側の参照先も更新する
 
 ## Known Pitfalls
 

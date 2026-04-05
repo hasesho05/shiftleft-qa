@@ -10,14 +10,13 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
-    exclude: ["tests/live-e2e/**"],
-    hookTimeout: 20000,
+    include: ["tests/live-e2e/**/*.test.ts"],
+    hookTimeout: 120000,
     server: {
       deps: {
         external: [],
       },
     },
-    testTimeout: 20000,
+    testTimeout: 120000,
   },
 });

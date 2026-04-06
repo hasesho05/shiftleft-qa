@@ -22,7 +22,7 @@ PR を読んで、次の handoff 設計に必要な事実をまとめる。
 - 現在の実装は内部的に `pr-intake` / `discover-context` / `map-tests` / `assess-gaps` を使ってよい。
 - `setup` と local DB / progress files は、現行実装では必要なことがあるが、user-facing には主語にしない。
 - ユーザーには individual step 名ではなく、「PR と既存テストを理解する skill」として見せる。
-- 先に CLI / GitHub / diff / issue から取れる事実を集め、それでも不足する文脈だけをユーザーに質問する。
+- 先に CLI / GitHub / diff / issue から取れる事実を集め、それでも不足する文脈だけを `AskUserQuestion` で確認する。
 
 ## 実行手順
 
@@ -30,9 +30,9 @@ PR を読んで、次の handoff 設計に必要な事実をまとめる。
    - 内部で pr-intake / discover-context / map-tests / assess-gaps を順に実行し、結果を統合する。
    - 返却 JSON に internal ID は含まれない。
 2. 返却 JSON から intent context / changed files / test coverage / risk highlights / layer applicability を読み取る。
-3. 事実だけでは intent や acceptance criteria が足りない場合は、ユーザーに不足文脈を確認する。
+3. 事実だけでは intent や acceptance criteria が足りない場合は、`AskUserQuestion` で不足文脈を確認する。
 4. 整理結果を要約する。
-5. `design-handoff` に進んでよいか確認する。
+5. `AskUserQuestion` で `design-handoff` に進んでよいか確認する。
 
 CLI:
 
@@ -57,7 +57,7 @@ bun run dev analyze-pr --pr <number>
 - intent context が複数解釈に割れる
 - QA scope に影響する前提が diff から読めない
 
-質問は、その skill の判断に必要な不足文脈だけに絞る。
+この場合だけ `AskUserQuestion` を使う。質問は、その skill の判断に必要な不足文脈だけに絞る。
 
 ### 要約時
 
@@ -70,11 +70,11 @@ bun run dev analyze-pr --pr <number>
 
 ### 次へ進む確認
 
-- 要約のあと、`design-handoff` に進んでよいかを明示的に確認する。
+- 要約のあと、`AskUserQuestion` で `design-handoff` に進んでよいかを明示的に確認する。
 
 例:
 
-- 「analysis は以上です。この前提で `design-handoff` に進めてよければ続けます。」
+- 「analysis は以上です。この前提で `design-handoff` に進めてよいですか。」
 
 ## 完了条件
 
@@ -82,7 +82,7 @@ bun run dev analyze-pr --pr <number>
 - changed files と categories が整理されている。
 - 既存テスト候補、coverage confidence、layer applicability が確認できている。
 - 後続の `design-handoff` が内部 ID や step 順序を意識せずに進められる形に要約されている。
-- 次の skill に進む前に、ユーザー確認が取れている。
+- 次の skill に進む前に、`AskUserQuestion` でユーザー確認が取れている。
 
 ## 次の Step
 

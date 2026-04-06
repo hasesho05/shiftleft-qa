@@ -18,13 +18,13 @@ QA handoff を GitHub Issue として publish / update し、shared source of tr
 - findings comment は post-handoff の optional follow-up として扱う。
 - 既存 issue を更新するか、新規 issue を作るかは user-facing には 1 つの handoff lifecycle として扱う。
 - `config.json` の `publishDefaults` があれば publish の既定値として使う。
-- publish 前に必要なら title / target issue / scope をユーザーに確認してよい。
-- 質問は、config と draft から埋まらない項目だけに絞る。
-- この「不足項目を確認する」振る舞いは skill contract の責務であり、CLI 単体の実装はまだ追従途中である。
+- publish 前に必要なら title / target issue / scope を `AskUserQuestion` で確認してよい。
+- 質問は、config と draft から埋まらない項目だけに絞り、`AskUserQuestion` を使う。
+- この「不足項目を `AskUserQuestion` で確認する」振る舞いは skill contract の責務であり、CLI 単体の実装はまだ追従途中である。
 
 ## 実行手順
 
-1. publish 前に title / target issue / scope が不明なら、ユーザーに確認する。
+1. publish 前に title / target issue / scope が不明なら、`AskUserQuestion` で確認する。
 2. `bun run dev publish-handoff --pr <number>` を実行する。
    - 内部で前段の analysis/allocation 結果を PR 番号から自動解決し、GitHub Issue を create or update する。
    - `config.json` の `publishDefaults` (repository, titlePrefix, labels, assignees, mode, findingsComment) が既定値として使われる。
@@ -49,7 +49,7 @@ bun run dev publish-handoff --pr <number> --session-id <id>
 ### 開始時
 
 - いまから GitHub QA Issue を create / update することを短く伝える。
-- 既存 issue 更新か新規 publish か、現時点で確定しているかを確認する。
+- 既存 issue 更新か新規 publish か、現時点で確定しているかを `AskUserQuestion` で確認する。
 
 例:
 
@@ -64,7 +64,7 @@ bun run dev publish-handoff --pr <number> --session-id <id>
 - findings comment を今回返すかどうかが未確定
 - publish scope を narrow / broad のどちらにするか判断が必要
 
-質問は、publish の成否や意味に直結する事項に限る。
+この場合だけ `AskUserQuestion` を使う。質問は、publish の成否や意味に直結する事項に限る。
 
 ### 完了報告
 

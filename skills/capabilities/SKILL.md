@@ -20,7 +20,7 @@ description: shiftleft-qa の対応範囲、前提、非対応事項を案内す
 ## 伝えるべき要点
 
 - まずは `analyze-pr` → `design-handoff` → `publish-handoff` を主フローとして案内する
-- この 3 つの public skill が順にリレーし、各 skill の中で必要なら不足文脈を質問する
+- この 3 つの public skill が順にリレーし、各 skill の中で必要なら `AskUserQuestion` で不足文脈を確認する
 - GitHub Issue が shared handoff の正本
 - local DB / progress files は cache / resumable state として扱う
 - manual exploration を増やすためではなく、manual に残る前に削るための plugin
@@ -32,7 +32,7 @@ description: shiftleft-qa の対応範囲、前提、非対応事項を案内す
 
 - 利用者が `analyze-pr` から始める前提を明示する
 - 必要なら `setup` は legacy / advanced path だと補足する
-- `analyze-pr` に進んでよいかを確認して終える
+- `AskUserQuestion` で `analyze-pr` に進んでよいかを確認して終える
 
 ## 会話テンプレート
 
@@ -48,11 +48,11 @@ description: shiftleft-qa の対応範囲、前提、非対応事項を案内す
 ### 終了時
 
 - `setup` は通常利用の入口ではないと必要に応じて補足する。
-- `analyze-pr` に進んでよいかを確認して閉じる。
+- `AskUserQuestion` で `analyze-pr` に進んでよいかを確認して閉じる。
 
 例:
 
-- 「通常は `setup` ではなく `analyze-pr` から始めます。このまま `analyze-pr` に進めてよければ続けます。」
+- 「通常は `setup` ではなく `analyze-pr` から始めます。このまま `analyze-pr` に進めてよいですか。」
 
 ## 次の Step
 

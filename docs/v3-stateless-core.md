@@ -1,14 +1,14 @@
-# v3 Stateless Core — Migration Complete
+# Stateless Core — Architecture Overview
 
-## Current State
+## Public Flow
 
-`shiftleft-qa` の primary value は、次の 3-skill public flow で完結する。
+`shiftleft-qa` は、次の 3-skill public flow で完結する。
 
 1. `analyze-pr`
 2. `design-handoff`
 3. `publish-handoff`
 
-この flow は CLI 主導ではなく、SKILL 主導で順にリレーする。legacy workflow の retirement は完了済み。
+この flow は CLI 主導ではなく、SKILL 主導で順にリレーする。
 
 ## What Is Core
 
@@ -27,15 +27,15 @@
 
 ## Internal Implementation
 
-public skill は内部で legacy analysis step の tool 関数を合成して使う。
+public skill は内部で分析用 tool 関数を合成して使う。
 
-Public skill | 内部で使う tool 関数
+Public skill | 処理内容
 --- | ---
-`analyze-pr` | `pr-intake`, `discover-context`, `map-tests`
-`design-handoff` | `assess-gaps`, `allocate`, `handoff generate`
-`publish-handoff` | `handoff publish`, `handoff update`
+`analyze-pr` | PR 取得 → 変更分析 → テスト対応付け → リスク評価
+`design-handoff` | Allocation → Handoff markdown 生成
+`publish-handoff` | GitHub Issue create / update
 
-これらの内部 tool 関数は独立した user-facing workflow ではなく、public skill の実装レイヤーとして存続する。
+個々の tool 関数は独立した user-facing workflow ではなく、public skill の実装レイヤーである。
 
 ## Design Rule
 

@@ -24,7 +24,7 @@ user-facing の flow は 3 つの public skill で完結する。
 2. `design-handoff` — already covered / should automate / manual exploration required を設計する
 3. `publish-handoff` — GitHub QA Issue を create / update する
 
-内部実装では、これらの public skill が legacy analysis step の tool 関数（`pr-intake`, `discover-context`, `map-tests`, `assess-gaps`, `allocate`, `handoff` など）を合成して使う。legacy step は独立した user-facing workflow ではなく、public skill の内部実装レイヤーとして存続する。
+内部実装では、これらの public skill が分析用 tool 関数（`runPrIntake`, `runDiscoverContextFromIntake`, `runMapTestsFromAnalysis`, `runAssessGapsFromMapping`, `runAllocate`, `generateHandoffMarkdown` など）を合成して使う。個々の tool 関数は独立した user-facing workflow ではなく、public skill の内部実装レイヤーである。
 
 - GitHub Issue が primary artifact
 - `config.json` / local DB は optional cache / resume layer
@@ -92,7 +92,7 @@ Skill Layer (skills/*/SKILL.md)
 analyze-pr → design-handoff → publish-handoff
 ```
 
-各 skill は内部で legacy tool 関数を合成する。`analyze-pr` は pr-intake / discover-context / map-tests 相当、`design-handoff` は assess-gaps / allocate / handoff generate 相当、`publish-handoff` は handoff publish / update 相当の処理を実行する。
+各 skill は内部で複数の tool 関数を合成する。`analyze-pr` は PR 取得・変更分析・テスト対応付け・リスク評価を順に実行し、`design-handoff` は allocation と handoff markdown 生成を実行し、`publish-handoff` は GitHub Issue の create / update を実行する。
 
 ### Skill と CLI の責務分担
 

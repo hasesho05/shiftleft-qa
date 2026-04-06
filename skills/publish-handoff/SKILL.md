@@ -24,16 +24,25 @@ QA handoff を GitHub Issue として publish / update し、shared source of tr
 
 ## 実行手順
 
-1. handoff draft を GitHub QA Issue に create / update する。
-2. 必要なら findings comment を返す。
-3. publish 前に title / target issue / scope が不明なら、ユーザーに確認する。
-4. 完了後に issue URL や comment 結果を要約して返す。
+1. publish 前に title / target issue / scope が不明なら、ユーザーに確認する。
+2. `bun run dev publish-handoff --pr <number>` を実行する。
+   - 内部で前段の analysis/allocation 結果を PR 番号から自動解決し、GitHub Issue を create or update する。
+   - `config.json` の `publishDefaults` (repository, titlePrefix, labels, assignees, mode, findingsComment) が既定値として使われる。
+   - CLI オプションで上書き可能: `--issue-number`, `--title`, `--label`, `--assignee`, `--session-id`
+3. 完了後に issue URL や comment 結果を要約して返す。
 
-現在の実装で使う CLI 例:
+CLI:
 
-- `bun run dev handoff publish --risk-assessment-id <id>`
-- `bun run dev handoff update --risk-assessment-id <id> --issue-number <number>`
-- `bun run dev handoff add-findings --issue-number <number> --session-id <id>`
+```bash
+# 新規作成 (publishDefaults.mode = "create" or "create-or-update")
+bun run dev publish-handoff --pr <number>
+
+# 既存 Issue 更新
+bun run dev publish-handoff --pr <number> --issue-number <number>
+
+# findings comment 付き
+bun run dev publish-handoff --pr <number> --session-id <id>
+```
 
 ## 会話テンプレート
 

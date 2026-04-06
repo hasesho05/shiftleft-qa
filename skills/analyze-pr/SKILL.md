@@ -26,18 +26,19 @@ PR を読んで、次の handoff 設計に必要な事実をまとめる。
 
 ## 実行手順
 
-1. この PR の metadata / related issue / diff / existing tests を読む。
-2. 現在の実装で必要なら、内部的に `setup` / `pr-intake` / `discover-context` / `map-tests` / `assess-gaps` を使って事実を集める。
+1. `bun run dev analyze-pr --pr <number>` を実行する。
+   - 内部で pr-intake / discover-context / map-tests / assess-gaps を順に実行し、結果を統合する。
+   - 返却 JSON に internal ID は含まれない。
+2. 返却 JSON から intent context / changed files / test coverage / risk highlights / layer applicability を読み取る。
 3. 事実だけでは intent や acceptance criteria が足りない場合は、ユーザーに不足文脈を確認する。
 4. 整理結果を要約する。
 5. `design-handoff` に進んでよいか確認する。
 
-現在の実装で使う CLI 例:
+CLI:
 
-- `bun run dev pr-intake --pr <number>`
-- `bun run dev discover-context --pr <number> --provider github --repository <owner/repo>`
-- `bun run dev map-tests --pr <number> --provider github --repository <owner/repo>`
-- `bun run dev assess-gaps --pr <number> --provider github --repository <owner/repo>`
+```bash
+bun run dev analyze-pr --pr <number>
+```
 
 ## 会話テンプレート
 

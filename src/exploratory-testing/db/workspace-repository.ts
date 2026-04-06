@@ -2291,6 +2291,73 @@ export function listFindingsByType(
   }
 }
 
+// ---------------------------------------------------------------------------
+// PR-based record resolution (public flow orchestration)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the unique (provider, repository) pair for a PR number.
+ * Returns null when no intake exists.
+ * Throws when multiple distinct (provider, repository) pairs exist for the
+ * same PR number — callers must disambiguate with explicit arguments.
+ */
+export function resolvePrIdentity(
+  databasePath: string,
+  prNumber: number,
+): { readonly provider: string; readonly repository: string } | null {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query(
+        `
+        SELECT DISTINCT provider, repository FROM pr_intakes
+        WHERE pr_number = ?1
+        `,
+      )
+      .all<{ readonly provider: string; readonly repository: string }>(
+        prNumber,
+      );
+
+    if (rows.length === 0) return null;
+
+    if (rows.length > 1) {
+      const pairs = rows.map((r) => `${r.provider}/${r.repository}`).join(", ");
+      throw new Error(
+        `PR #${prNumber} exists under multiple repositories (${pairs}). Specify --provider and --repository to disambiguate.`,
+      );
+    }
+
+    return rows[0];
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * Find the latest risk assessment for a given PR.
+ * provider and repository are required to ensure an unambiguous lookup.
+ */
+export function findLatestRiskAssessmentByPr(
+  databasePath: string,
+  provider: string,
+  repository: string,
+  prNumber: number,
+): PersistedRiskAssessment | null {
+  const prIntake = findPrIntake(databasePath, provider, repository, prNumber);
+  if (!prIntake) return null;
+
+  const changeAnalysis = findChangeAnalysis(databasePath, prIntake.id);
+  if (!changeAnalysis) return null;
+
+  const testMapping = findTestMapping(databasePath, changeAnalysis.id);
+  if (!testMapping) return null;
+
+  return findRiskAssessment(databasePath, testMapping.id);
+}
+
+// ---------------------------------------------------------------------------
+
 function mapFindingRow(row: FindingRow): PersistedFinding {
   return {
     id: row.id,

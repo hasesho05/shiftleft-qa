@@ -33,6 +33,7 @@ describe("plugin config", () => {
     expect(ensured.rawConfig.paths.progressSummary).toBe(
       ".exploratory-testing/progress/progress-summary.md",
     );
+    expect(ensured.rawConfig.publishDefaults.mode).toBe("create-or-update");
     expect(resolved.paths.database).toBe(
       `${workspace.root}/exploratory-testing.db`,
     );
@@ -43,6 +44,9 @@ describe("plugin config", () => {
       `${workspace.root}/.exploratory-testing/progress/progress-summary.md`,
     );
     expect(resolved.paths.artifactsDirectory).toBe(`${workspace.root}/output`);
+    expect(resolved.publishDefaults.mode).toBe("create-or-update");
+    expect(resolved.publishDefaults.repository).toBeUndefined();
+    expect(resolved.publishDefaults.titlePrefix).toBeUndefined();
   });
 });
 

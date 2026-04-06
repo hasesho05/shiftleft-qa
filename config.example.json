@@ -8,5 +8,13 @@
     "progressDirectory": ".exploratory-testing/progress",
     "progressSummary": ".exploratory-testing/progress/progress-summary.md",
     "artifactsDirectory": "output"
+  },
+  "publishDefaults": {
+    "repository": "owner/repo",
+    "titlePrefix": "QA",
+    "labels": ["qa-handoff"],
+    "assignees": [],
+    "findingsComment": true,
+    "mode": "create-or-update"
   }
 }

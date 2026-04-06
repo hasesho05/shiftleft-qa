@@ -7,4 +7,8 @@
 - 何のための plugin かを説明する
 - source of truth をどこに置くかを説明する
 - 非対応事項を先に共有する
-- 最初に `/setup` を呼ぶ流れへつなぐ
+- 最初に `analyze-pr` を呼ぶ relay 型フローへつなぐ
+- `analyze-pr` → `design-handoff` → `publish-handoff` が public flow であると案内する
+- CLI は裏方で、public skill が対話と判断の主役だと共有する
+
+`setup` は残っていても、通常利用の最初の入口としては扱わない。

@@ -41,6 +41,7 @@ import {
   addIssueComment,
   createIssue,
   editIssueBody,
+  findIssueBySearch,
 } from "../scm/github-issues";
 import { readPluginConfig } from "./config";
 import { writeStepHandoverFromConfig } from "./progress";
@@ -69,6 +70,11 @@ export type HandoffFindingsInput = {
   readonly sessionId: number;
   readonly configPath?: string;
   readonly manifestPath?: string;
+};
+
+export type PublishHandoffLifecycleInput = HandoffPublishInput & {
+  readonly issueNumber?: number;
+  readonly sessionId?: number;
 };
 
 export type HandoffSections = {
@@ -116,6 +122,14 @@ export type AddHandoffCommentRawResult = {
   readonly comment: CreatedComment;
 };
 
+export type PublishHandoffLifecycleResult = {
+  readonly action: "created" | "updated";
+  readonly issueNumber: number;
+  readonly issueUrl?: string;
+  readonly title: string;
+  readonly findingsCommentUrl?: string;
+};
+
 type HandoffContext = {
   readonly prIntake: PersistedPrIntake;
   readonly changeAnalysis: PersistedChangeAnalysis;
@@ -160,16 +174,15 @@ export async function runCreateHandoffIssue(
 ): Promise<CreateHandoffIssueResult> {
   const markdown = await generateHandoffMarkdown(input);
   const config = await readPluginConfig(input.configPath, input.manifestPath);
+  const publishDefaults = resolvePublishDefaults(config, markdown, input);
 
   const issue = await createIssue({
     repositoryRoot: config.workspaceRoot,
-    repository: markdown.repository,
-    title:
-      input.title ??
-      `QA: PR #${extractPrNumber(markdown.markdown)} — handoff checklist`,
+    repository: publishDefaults.repository,
+    title: publishDefaults.title,
     body: markdown.markdown,
-    labels: input.labels,
-    assignees: input.assignees,
+    labels: publishDefaults.labels,
+    assignees: publishDefaults.assignees,
   });
 
   await writeStepHandoverFromConfig(config, {
@@ -180,6 +193,115 @@ export async function runCreateHandoffIssue(
   });
 
   return { markdown, issue };
+}
+
+type ResolvedPublishDefaults = {
+  readonly repository: string;
+  readonly title: string;
+  readonly labels?: readonly string[];
+  readonly assignees?: readonly string[];
+};
+
+function resolvePublishDefaults(
+  config: ResolvedPluginConfig,
+  markdown: HandoffMarkdownResult,
+  input: HandoffPublishInput,
+): ResolvedPublishDefaults {
+  const repository = config.publishDefaults.repository ?? markdown.repository;
+  const titlePrefix = config.publishDefaults.titlePrefix ?? "QA";
+  const prNumber = extractPrNumber(markdown.markdown);
+  const title =
+    input.title ?? `${titlePrefix}: PR #${prNumber} — handoff checklist`;
+
+  const labels =
+    input.labels ?? normalizeOptionalStringArray(config.publishDefaults.labels);
+  const assignees =
+    input.assignees ??
+    normalizeOptionalStringArray(config.publishDefaults.assignees);
+
+  return {
+    repository,
+    title,
+    labels,
+    assignees,
+  };
+}
+
+function normalizeOptionalStringArray(
+  values: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+
+  return values;
+}
+
+async function createLifecycleIssue(
+  input: PublishHandoffLifecycleInput,
+): Promise<PublishHandoffLifecycleResult> {
+  const created = await runCreateHandoffIssue(input);
+  const findingsCommentUrl = await maybeAddFindingsComment(
+    input,
+    created.issue.number,
+  );
+
+  return {
+    action: "created",
+    issueNumber: created.issue.number,
+    issueUrl: created.issue.url,
+    title: created.issue.title,
+    findingsCommentUrl,
+  };
+}
+
+async function updateLifecycleIssue(
+  input: PublishHandoffLifecycleInput,
+  title: string,
+  issueNumber: number,
+  issueUrl?: string,
+): Promise<PublishHandoffLifecycleResult> {
+  const updated = await runUpdateHandoffIssue({
+    riskAssessmentId: input.riskAssessmentId,
+    issueNumber,
+    configPath: input.configPath,
+    manifestPath: input.manifestPath,
+  });
+  const findingsCommentUrl = await maybeAddFindingsComment(
+    input,
+    updated.issueNumber,
+  );
+
+  return {
+    action: "updated",
+    issueNumber: updated.issueNumber,
+    issueUrl,
+    title,
+    findingsCommentUrl,
+  };
+}
+
+async function maybeAddFindingsComment(
+  input: PublishHandoffLifecycleInput,
+  issueNumber: number,
+): Promise<string | undefined> {
+  if (!input.sessionId) {
+    return undefined;
+  }
+
+  const config = await readPluginConfig(input.configPath, input.manifestPath);
+  if (!config.publishDefaults.findingsComment) {
+    return undefined;
+  }
+
+  const result = await runAddHandoffComment({
+    issueNumber,
+    sessionId: input.sessionId,
+    configPath: input.configPath,
+    manifestPath: input.manifestPath,
+  });
+
+  return result.comment.url;
 }
 
 export async function runCreateHandoffIssueRaw(
@@ -247,6 +369,58 @@ export async function runAddHandoffCommentRaw(
 ): Promise<AddHandoffCommentRawResult> {
   const comment = await addIssueComment(input);
   return { comment };
+}
+
+export async function runPublishHandoffLifecycle(
+  input: PublishHandoffLifecycleInput,
+): Promise<PublishHandoffLifecycleResult> {
+  const markdown = await generateHandoffMarkdown(input);
+  const config = await readPluginConfig(input.configPath, input.manifestPath);
+  const publishDefaults = resolvePublishDefaults(config, markdown, input);
+  const publishMode = config.publishDefaults.mode ?? "create-or-update";
+
+  if (publishMode === "create") {
+    return createLifecycleIssue(input);
+  }
+
+  if (publishMode === "update") {
+    if (input.issueNumber === undefined) {
+      throw new Error(
+        "publishDefaults.mode=update の場合は target issue number が必要です。",
+      );
+    }
+
+    return updateLifecycleIssue(
+      input,
+      publishDefaults.title,
+      input.issueNumber,
+    );
+  }
+
+  if (input.issueNumber !== undefined) {
+    return updateLifecycleIssue(
+      input,
+      publishDefaults.title,
+      input.issueNumber,
+    );
+  }
+
+  const existingIssue = await findIssueBySearch({
+    repositoryRoot: config.workspaceRoot,
+    repository: publishDefaults.repository,
+    searchQuery: `"${publishDefaults.title}" in:title`,
+  });
+
+  if (existingIssue) {
+    return updateLifecycleIssue(
+      input,
+      existingIssue.title,
+      existingIssue.number,
+      existingIssue.url,
+    );
+  }
+
+  return createLifecycleIssue(input);
 }
 
 export function groupBySection(

@@ -1,14 +1,14 @@
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 
+type FsPromisesModule = typeof import("node:fs/promises");
+
 vi.mock("execa", () => ({
   execa: vi.fn(),
 }));
 
 // Mock node:fs/promises for temp file operations
 vi.mock("node:fs/promises", async (importOriginal) => {
-  const original = (await importOriginal()) as typeof import(
-    "node:fs/promises",
-  );
+  const original = (await importOriginal()) as FsPromisesModule;
   return {
     ...original,
     mkdtemp: vi.fn(async () => "/tmp/gh-issue-body-mock"),

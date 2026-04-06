@@ -175,8 +175,8 @@ capabilities
 --- | ---
 `capabilities` | 対応範囲・前提・非対応を案内する
 `analyze-pr` | `pr-intake` / `discover-context` / `map-tests` 相当を吸収し、PR / related issue / changed files / 既存テストを整理し、不足文脈があれば `AskUserQuestion` で確認する
-`design-handoff` | `assess-gaps` / `allocate` / `handoff generate` 相当を吸収し、manual exploration に残す項目を絞り、draft を作る
-`publish-handoff` | `handoff publish` / `handoff update` / `handoff add-findings` 相当を吸収し、GitHub QA Issue を正本として更新する
+`design-handoff` | `assess-gaps` / `allocate` / `handoff generate` 相当を吸収し、manual exploration に残す項目を絞り、draft を作り、不足する判断材料があれば `AskUserQuestion` で確認する
+`publish-handoff` | `handoff publish` / `handoff update` / `handoff add-findings` 相当を吸収し、GitHub QA Issue を正本として更新し、不足項目があれば `AskUserQuestion` で確認する
 
 ### Legacy / Internal Skills
 

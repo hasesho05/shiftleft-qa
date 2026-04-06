@@ -1,6 +1,6 @@
 # setup
 
-workspace の初期化を行う skill です。
+workspace の初期化を行う legacy / advanced skill です。
 
 主な役割:
 
@@ -8,4 +8,4 @@ workspace の初期化を行う skill です。
 - SQLite DB の初期化
 - progress files の初期化
 
-通常は Claude Code で `/setup` から開始します。
+通常利用の入口としては扱いません。基本は `analyze-pr` から開始し、`setup` は local persistence を明示的に使いたいときだけ使います。

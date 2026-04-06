@@ -41,6 +41,7 @@ import {
   addIssueComment,
   createIssue,
   editIssueBody,
+  findIssueBySearch,
 } from "../scm/github-issues";
 import { readPluginConfig } from "./config";
 import { writeStepHandoverFromConfig } from "./progress";
@@ -71,6 +72,11 @@ export type HandoffFindingsInput = {
   readonly manifestPath?: string;
 };
 
+export type PublishHandoffLifecycleInput = HandoffPublishInput & {
+  readonly issueNumber?: number;
+  readonly sessionId?: number;
+};
+
 export type HandoffSections = {
   readonly alreadyCovered: readonly PersistedAllocationItem[];
   readonly shouldAutomate: readonly PersistedAllocationItem[];
@@ -86,6 +92,7 @@ export type HandoffSummary = {
 
 export type HandoffMarkdownResult = {
   readonly riskAssessmentId: number;
+  readonly prNumber: number;
   readonly repository: string;
   readonly markdown: string;
   readonly sections: HandoffSections;
@@ -116,6 +123,14 @@ export type AddHandoffCommentRawResult = {
   readonly comment: CreatedComment;
 };
 
+export type PublishHandoffLifecycleResult = {
+  readonly action: "created" | "updated";
+  readonly issueNumber: number;
+  readonly issueUrl?: string;
+  readonly title: string;
+  readonly findingsCommentUrl?: string;
+};
+
 type HandoffContext = {
   readonly prIntake: PersistedPrIntake;
   readonly changeAnalysis: PersistedChangeAnalysis;
@@ -142,6 +157,7 @@ export async function generateHandoffMarkdown(
 
   return {
     riskAssessmentId: input.riskAssessmentId,
+    prNumber: context.prIntake.prNumber,
     repository: context.prIntake.repository,
     markdown: renderHandoffMarkdown(
       context.prIntake,
@@ -160,16 +176,15 @@ export async function runCreateHandoffIssue(
 ): Promise<CreateHandoffIssueResult> {
   const markdown = await generateHandoffMarkdown(input);
   const config = await readPluginConfig(input.configPath, input.manifestPath);
+  const publishDefaults = resolvePublishDefaults(config, markdown, input);
 
   const issue = await createIssue({
     repositoryRoot: config.workspaceRoot,
-    repository: markdown.repository,
-    title:
-      input.title ??
-      `QA: PR #${extractPrNumber(markdown.markdown)} — handoff checklist`,
+    repository: publishDefaults.repository,
+    title: publishDefaults.title,
     body: markdown.markdown,
-    labels: input.labels,
-    assignees: input.assignees,
+    labels: publishDefaults.labels,
+    assignees: publishDefaults.assignees,
   });
 
   await writeStepHandoverFromConfig(config, {
@@ -180,6 +195,126 @@ export async function runCreateHandoffIssue(
   });
 
   return { markdown, issue };
+}
+
+type ResolvedPublishDefaults = {
+  readonly repository: string;
+  readonly title: string;
+  readonly labels?: readonly string[];
+  readonly assignees?: readonly string[];
+};
+
+function resolvePublishDefaults(
+  config: ResolvedPluginConfig,
+  markdown: HandoffMarkdownResult,
+  input: HandoffPublishInput,
+): ResolvedPublishDefaults {
+  const repository = resolvePublishRepository(config, markdown.repository);
+  const titlePrefix = config.publishDefaults.titlePrefix ?? "QA";
+  const title =
+    input.title ??
+    `${titlePrefix}: PR #${markdown.prNumber} — handoff checklist`;
+
+  const labels =
+    input.labels ?? normalizeOptionalStringArray(config.publishDefaults.labels);
+  const assignees =
+    input.assignees ??
+    normalizeOptionalStringArray(config.publishDefaults.assignees);
+
+  return {
+    repository,
+    title,
+    labels,
+    assignees,
+  };
+}
+
+function resolvePublishRepository(
+  config: ResolvedPluginConfig,
+  fallbackRepository: string,
+): string {
+  return config.publishDefaults.repository ?? fallbackRepository;
+}
+
+function normalizeOptionalStringArray(
+  values: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+
+  return values;
+}
+
+async function createLifecycleIssue(
+  config: ResolvedPluginConfig,
+  input: PublishHandoffLifecycleInput,
+): Promise<PublishHandoffLifecycleResult> {
+  const created = await runCreateHandoffIssue(input);
+  const findingsCommentUrl = await maybeAddFindingsComment(
+    config,
+    input,
+    created.issue.number,
+  );
+
+  return {
+    action: "created",
+    issueNumber: created.issue.number,
+    issueUrl: created.issue.url,
+    title: created.issue.title,
+    findingsCommentUrl,
+  };
+}
+
+async function updateLifecycleIssue(
+  config: ResolvedPluginConfig,
+  input: PublishHandoffLifecycleInput,
+  title: string,
+  issueNumber: number,
+  issueUrl?: string,
+): Promise<PublishHandoffLifecycleResult> {
+  const updated = await runUpdateHandoffIssue({
+    riskAssessmentId: input.riskAssessmentId,
+    issueNumber,
+    configPath: input.configPath,
+    manifestPath: input.manifestPath,
+  });
+  const findingsCommentUrl = await maybeAddFindingsComment(
+    config,
+    input,
+    updated.issueNumber,
+  );
+
+  return {
+    action: "updated",
+    issueNumber: updated.issueNumber,
+    issueUrl,
+    title,
+    findingsCommentUrl,
+  };
+}
+
+async function maybeAddFindingsComment(
+  config: ResolvedPluginConfig,
+  input: PublishHandoffLifecycleInput,
+  issueNumber: number,
+): Promise<string | undefined> {
+  if (!input.sessionId) {
+    return undefined;
+  }
+
+  if (!config.publishDefaults.findingsComment) {
+    return undefined;
+  }
+
+  const result = await runAddHandoffComment({
+    issueNumber,
+    sessionId: input.sessionId,
+    configPath: input.configPath,
+    manifestPath: input.manifestPath,
+  });
+
+  return result.comment.url;
 }
 
 export async function runCreateHandoffIssueRaw(
@@ -197,7 +332,7 @@ export async function runUpdateHandoffIssue(
 
   await editIssueBody({
     repositoryRoot: config.workspaceRoot,
-    repository: markdown.repository,
+    repository: resolvePublishRepository(config, markdown.repository),
     issueNumber: input.issueNumber,
     body: markdown.markdown,
   });
@@ -234,7 +369,7 @@ export async function runAddHandoffComment(
 
   const comment = await addIssueComment({
     repositoryRoot: config.workspaceRoot,
-    repository: context.prIntake.repository,
+    repository: resolvePublishRepository(config, context.prIntake.repository),
     issueNumber: input.issueNumber,
     body,
   });
@@ -247,6 +382,61 @@ export async function runAddHandoffCommentRaw(
 ): Promise<AddHandoffCommentRawResult> {
   const comment = await addIssueComment(input);
   return { comment };
+}
+
+export async function runPublishHandoffLifecycle(
+  input: PublishHandoffLifecycleInput,
+): Promise<PublishHandoffLifecycleResult> {
+  const markdown = await generateHandoffMarkdown(input);
+  const config = await readPluginConfig(input.configPath, input.manifestPath);
+  const publishDefaults = resolvePublishDefaults(config, markdown, input);
+  const publishMode = config.publishDefaults.mode ?? "create-or-update";
+
+  if (publishMode === "create") {
+    return createLifecycleIssue(config, input);
+  }
+
+  if (publishMode === "update") {
+    if (input.issueNumber === undefined) {
+      throw new Error(
+        "target issue number is required when publishDefaults.mode is 'update'.",
+      );
+    }
+
+    return updateLifecycleIssue(
+      config,
+      input,
+      publishDefaults.title,
+      input.issueNumber,
+    );
+  }
+
+  if (input.issueNumber !== undefined) {
+    return updateLifecycleIssue(
+      config,
+      input,
+      publishDefaults.title,
+      input.issueNumber,
+    );
+  }
+
+  const existingIssue = await findIssueBySearch({
+    repositoryRoot: config.workspaceRoot,
+    repository: publishDefaults.repository,
+    searchQuery: `"${escapeSearchQueryValue(publishDefaults.title)}" in:title`,
+  });
+
+  if (existingIssue) {
+    return updateLifecycleIssue(
+      config,
+      input,
+      existingIssue.title,
+      existingIssue.number,
+      existingIssue.url,
+    );
+  }
+
+  return createLifecycleIssue(config, input);
 }
 
 export function groupBySection(
@@ -673,12 +863,6 @@ function resolveFindingsContext(
   return { session, prIntake };
 }
 
-function extractPrNumber(markdown: string): number {
-  const match = markdown.match(/PR #(\d+)/);
-
-  if (!match) {
-    return 0;
-  }
-
-  return Number(match[1]);
+function escapeSearchQueryValue(value: string): string {
+  return value.replaceAll('"', '\\"');
 }

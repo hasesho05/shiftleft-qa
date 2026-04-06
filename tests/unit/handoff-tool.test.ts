@@ -1,9 +1,11 @@
+import { writeFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/exploratory-testing/scm/github-issues", () => ({
   createIssue: vi.fn(),
   editIssueBody: vi.fn(),
   addIssueComment: vi.fn(),
+  findIssueBySearch: vi.fn(),
 }));
 
 import {
@@ -31,6 +33,7 @@ import {
   addIssueComment,
   createIssue,
   editIssueBody,
+  findIssueBySearch,
 } from "../../src/exploratory-testing/scm/github-issues";
 import {
   generateHandoffMarkdown,
@@ -39,6 +42,7 @@ import {
   renderHandoffMarkdown,
   runAddHandoffComment,
   runCreateHandoffIssue,
+  runPublishHandoffLifecycle,
   runUpdateHandoffIssue,
 } from "../../src/exploratory-testing/tools/handoff";
 import { readStepHandoverDocument } from "../../src/exploratory-testing/tools/progress";
@@ -396,9 +400,328 @@ describe("handoff tool", () => {
     expect(handover.body).toContain("generate-charters");
   });
 
+  it("applies publish defaults from config when creating a handoff issue", async () => {
+    const workspace = await setupWorkspace();
+    const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);
+
+    await writeFile(
+      workspace.configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          repositoryRoot: ".",
+          scmProvider: "auto",
+          defaultLanguage: "ja",
+          paths: {
+            database: "exploratory-testing.db",
+            progressDirectory: ".exploratory-testing/progress",
+            progressSummary:
+              ".exploratory-testing/progress/progress-summary.md",
+            artifactsDirectory: "output",
+          },
+          publishDefaults: {
+            repository: "org/qa-handoff",
+            titlePrefix: "QA Handoff",
+            labels: ["qa-handoff", "ready-for-qa"],
+            assignees: ["alice"],
+            findingsComment: true,
+            mode: "create-or-update",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    vi.mocked(createIssue).mockResolvedValue({
+      number: 43,
+      url: "https://github.com/org/qa-handoff/issues/43",
+      title: "QA Handoff: PR #42 — handoff checklist",
+    });
+
+    await runCreateHandoffIssue({
+      riskAssessmentId,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    expect(vi.mocked(createIssue)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repository: "org/qa-handoff",
+        title: "QA Handoff: PR #42 — handoff checklist",
+        labels: ["qa-handoff", "ready-for-qa"],
+        assignees: ["alice"],
+      }),
+    );
+  });
+
+  it("prefers explicit publish options over config defaults", async () => {
+    const workspace = await setupWorkspace();
+    const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);
+
+    await writeFile(
+      workspace.configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          repositoryRoot: ".",
+          scmProvider: "auto",
+          defaultLanguage: "ja",
+          paths: {
+            database: "exploratory-testing.db",
+            progressDirectory: ".exploratory-testing/progress",
+            progressSummary:
+              ".exploratory-testing/progress/progress-summary.md",
+            artifactsDirectory: "output",
+          },
+          publishDefaults: {
+            repository: "org/qa-handoff",
+            titlePrefix: "QA Handoff",
+            labels: ["qa-handoff"],
+            assignees: ["alice"],
+            findingsComment: true,
+            mode: "create-or-update",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    vi.mocked(createIssue).mockResolvedValue({
+      number: 44,
+      url: "https://github.com/org/qa-handoff/issues/44",
+      title: "Custom title",
+    });
+
+    await runCreateHandoffIssue({
+      riskAssessmentId,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+      title: "Custom title",
+      labels: ["custom-label"],
+      assignees: ["bob"],
+    });
+
+    expect(vi.mocked(createIssue)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repository: "org/qa-handoff",
+        title: "Custom title",
+        labels: ["custom-label"],
+        assignees: ["bob"],
+      }),
+    );
+  });
+
+  it("uses create-or-update mode to update an existing issue found by title", async () => {
+    const workspace = await setupWorkspace();
+    const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);
+
+    await writeFile(
+      workspace.configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          repositoryRoot: ".",
+          scmProvider: "auto",
+          defaultLanguage: "ja",
+          paths: {
+            database: "exploratory-testing.db",
+            progressDirectory: ".exploratory-testing/progress",
+            progressSummary:
+              ".exploratory-testing/progress/progress-summary.md",
+            artifactsDirectory: "output",
+          },
+          publishDefaults: {
+            repository: "org/qa-handoff",
+            titlePrefix: "QA Handoff",
+            labels: ["qa-handoff"],
+            assignees: ["alice"],
+            findingsComment: false,
+            mode: "create-or-update",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    vi.mocked(findIssueBySearch).mockResolvedValue({
+      number: 88,
+      url: "https://github.com/org/qa-handoff/issues/88",
+      title: "QA Handoff: PR #42 — handoff checklist",
+    });
+    vi.mocked(editIssueBody).mockResolvedValue(undefined);
+
+    const result = await runPublishHandoffLifecycle({
+      riskAssessmentId,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    expect(vi.mocked(findIssueBySearch)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repository: "org/qa-handoff",
+        searchQuery: '"QA Handoff: PR #42 — handoff checklist" in:title',
+      }),
+    );
+    expect(vi.mocked(editIssueBody)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueNumber: 88,
+      }),
+    );
+    expect(vi.mocked(createIssue)).not.toHaveBeenCalled();
+    expect(result.action).toBe("updated");
+    expect(result.issueNumber).toBe(88);
+  });
+
+  it("escapes double quotes in title when searching for an existing issue", async () => {
+    const workspace = await setupWorkspace();
+    const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);
+
+    await writeFile(
+      workspace.configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          repositoryRoot: ".",
+          scmProvider: "auto",
+          defaultLanguage: "ja",
+          paths: {
+            database: "exploratory-testing.db",
+            progressDirectory: ".exploratory-testing/progress",
+            progressSummary:
+              ".exploratory-testing/progress/progress-summary.md",
+            artifactsDirectory: "output",
+          },
+          publishDefaults: {
+            repository: "org/qa-handoff",
+            titlePrefix: 'QA "Handoff"',
+            findingsComment: false,
+            mode: "create-or-update",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    vi.mocked(findIssueBySearch).mockResolvedValue(null);
+    vi.mocked(createIssue).mockResolvedValue({
+      number: 90,
+      url: "https://github.com/org/qa-handoff/issues/90",
+      title: 'QA "Handoff": PR #42 — handoff checklist',
+    });
+
+    await runPublishHandoffLifecycle({
+      riskAssessmentId,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    expect(vi.mocked(findIssueBySearch)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery: '"QA \\"Handoff\\": PR #42 — handoff checklist" in:title',
+      }),
+    );
+  });
+
+  it("adds findings comment during publish lifecycle when config enables it", async () => {
+    const workspace = await setupWorkspace();
+    const { riskAssessmentId, sessionId } = seedHandoffPipeline(
+      workspace.databasePath,
+    );
+
+    await writeFile(
+      workspace.configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          repositoryRoot: ".",
+          scmProvider: "auto",
+          defaultLanguage: "ja",
+          paths: {
+            database: "exploratory-testing.db",
+            progressDirectory: ".exploratory-testing/progress",
+            progressSummary:
+              ".exploratory-testing/progress/progress-summary.md",
+            artifactsDirectory: "output",
+          },
+          publishDefaults: {
+            repository: "org/qa-handoff",
+            titlePrefix: "QA Handoff",
+            labels: ["qa-handoff"],
+            assignees: [],
+            findingsComment: true,
+            mode: "create",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    vi.mocked(createIssue).mockResolvedValue({
+      number: 55,
+      url: "https://github.com/org/qa-handoff/issues/55",
+      title: "QA Handoff: PR #42 — handoff checklist",
+    });
+    vi.mocked(addIssueComment).mockResolvedValue({
+      url: "https://github.com/org/qa-handoff/issues/55#issuecomment-2",
+    });
+
+    const result = await runPublishHandoffLifecycle({
+      riskAssessmentId,
+      sessionId,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    expect(result.action).toBe("created");
+    expect(result.issueNumber).toBe(55);
+    expect(result.findingsCommentUrl).toContain("issuecomment-2");
+    expect(vi.mocked(addIssueComment)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueNumber: 55,
+      }),
+    );
+  });
+
   it("updates an existing issue body from allocation data", async () => {
     const workspace = await setupWorkspace();
     const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);
+
+    await writeFile(
+      workspace.configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          repositoryRoot: ".",
+          scmProvider: "auto",
+          defaultLanguage: "ja",
+          paths: {
+            database: "exploratory-testing.db",
+            progressDirectory: ".exploratory-testing/progress",
+            progressSummary:
+              ".exploratory-testing/progress/progress-summary.md",
+            artifactsDirectory: "output",
+          },
+          publishDefaults: {
+            repository: "org/qa-handoff",
+            mode: "create-or-update",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
     vi.mocked(editIssueBody).mockResolvedValue(undefined);
 
     const result = await runUpdateHandoffIssue({
@@ -413,6 +736,7 @@ describe("handoff tool", () => {
       expect.objectContaining({
         issueNumber: 77,
         repositoryRoot: workspace.root,
+        repository: "org/qa-handoff",
         body: expect.stringContaining("Should Automate"),
       }),
     );
@@ -429,8 +753,35 @@ describe("handoff tool", () => {
   it("renders findings and posts them as a comment", async () => {
     const workspace = await setupWorkspace();
     const { sessionId } = seedHandoffPipeline(workspace.databasePath);
+
+    await writeFile(
+      workspace.configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          repositoryRoot: ".",
+          scmProvider: "auto",
+          defaultLanguage: "ja",
+          paths: {
+            database: "exploratory-testing.db",
+            progressDirectory: ".exploratory-testing/progress",
+            progressSummary:
+              ".exploratory-testing/progress/progress-summary.md",
+            artifactsDirectory: "output",
+          },
+          publishDefaults: {
+            repository: "org/qa-handoff",
+            mode: "create-or-update",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
     vi.mocked(addIssueComment).mockResolvedValue({
-      url: "https://github.com/owner/repo/issues/42#issuecomment-1",
+      url: "https://github.com/org/qa-handoff/issues/42#issuecomment-1",
     });
 
     const result = await runAddHandoffComment({
@@ -441,6 +792,12 @@ describe("handoff tool", () => {
     });
 
     expect(vi.mocked(addIssueComment)).toHaveBeenCalledOnce();
+    expect(vi.mocked(addIssueComment)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repository: "org/qa-handoff",
+        issueNumber: 42,
+      }),
+    );
     expect(result.body).toContain("Duplicate retry request");
     expect(result.body).toContain("Recommended layer");
     expect(result.comment.url).toContain("issuecomment-1");

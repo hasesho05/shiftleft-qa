@@ -33,6 +33,9 @@ export function createDefaultPluginConfig(
       ),
       artifactsDirectory: manifest.state.artifactsDirectory,
     },
+    publishDefaults: {
+      mode: "create-or-update",
+    },
   });
 }
 
@@ -117,6 +120,7 @@ export function resolvePluginConfig(
     repositoryRoot: config.repositoryRoot,
     scmProvider: config.scmProvider,
     defaultLanguage: config.defaultLanguage,
+    publishDefaults: config.publishDefaults,
     relativePaths: config.paths,
     paths: {
       database: resolveFromBase(workspaceRoot, config.paths.database),
@@ -155,6 +159,10 @@ function normalizePluginConfig(
     paths: {
       ...defaults.paths,
       ...partialConfig.paths,
+    },
+    publishDefaults: {
+      ...defaults.publishDefaults,
+      ...partialConfig.publishDefaults,
     },
   });
 }

@@ -17,6 +17,21 @@ export const pluginConfigPathsSchema = schema(
   }),
 );
 
+export const publishModeSchema = schema(
+  v.picklist(["create", "update", "create-or-update"]),
+);
+
+export const publishDefaultsSchema = schema(
+  v.object({
+    repository: v.optional(nonEmptyString()),
+    titlePrefix: v.optional(nonEmptyString()),
+    labels: v.optional(v.array(nonEmptyString())),
+    assignees: v.optional(v.array(nonEmptyString())),
+    findingsComment: v.optional(v.boolean()),
+    mode: v.optional(publishModeSchema),
+  }),
+);
+
 export const pluginConfigSchema = schema(
   v.object({
     version: v.literal(1),
@@ -24,6 +39,7 @@ export const pluginConfigSchema = schema(
     scmProvider: scmProviderSchema,
     defaultLanguage: defaultLanguageSchema,
     paths: pluginConfigPathsSchema,
+    publishDefaults: publishDefaultsSchema,
   }),
 );
 
@@ -34,6 +50,7 @@ export const partialPluginConfigSchema = schema(
     scmProvider: v.optional(scmProviderSchema),
     defaultLanguage: v.optional(defaultLanguageSchema),
     paths: v.optional(v.partial(pluginConfigPathsSchema)),
+    publishDefaults: v.optional(v.partial(publishDefaultsSchema)),
   }),
 );
 
@@ -51,6 +68,7 @@ export type ResolvedPluginConfig = {
   readonly scmProvider: PluginConfig["scmProvider"];
   readonly defaultLanguage: PluginConfig["defaultLanguage"];
   readonly relativePaths: PluginConfig["paths"];
+  readonly publishDefaults: PluginConfig["publishDefaults"];
   readonly paths: {
     readonly database: string;
     readonly progressDirectory: string;

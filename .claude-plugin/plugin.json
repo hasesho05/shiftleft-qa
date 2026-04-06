@@ -19,39 +19,54 @@
       "description": "shiftleft-qa の対応範囲、前提、非対応事項を案内する。"
     },
     {
+      "name": "analyze-pr",
+      "path": "skills/analyze-pr/SKILL.md",
+      "description": "PR と related issue を読み、intent context と既存テストを整理する。"
+    },
+    {
+      "name": "design-handoff",
+      "path": "skills/design-handoff/SKILL.md",
+      "description": "manual exploration に残す項目を絞り、QA handoff の下書きを作る。"
+    },
+    {
+      "name": "publish-handoff",
+      "path": "skills/publish-handoff/SKILL.md",
+      "description": "QA handoff Issue を publish / update し、必要なら findings を返す。"
+    },
+    {
       "name": "setup",
       "path": "skills/setup/SKILL.md",
-      "description": "Initialize config, workspace state, and progress tracking."
+      "description": "Legacy / advanced: initialize config, workspace state, and progress tracking."
     },
     {
       "name": "pr-intake",
       "path": "skills/pr-intake/SKILL.md",
-      "description": "Ingest PR or MR metadata and changed files."
+      "description": "Legacy internal step: ingest PR or MR metadata and changed files."
     },
     {
       "name": "discover-context",
       "path": "skills/discover-context/SKILL.md",
-      "description": "Analyze code and diff context before exploration."
+      "description": "Legacy internal step: analyze code and diff context before exploration."
     },
     {
       "name": "map-tests",
       "path": "skills/map-tests/SKILL.md",
-      "description": "Map related automated tests and summarize coverage."
+      "description": "Legacy internal step: map related automated tests and summarize coverage."
     },
     {
       "name": "assess-gaps",
       "path": "skills/assess-gaps/SKILL.md",
-      "description": "Identify coverage gaps and select exploratory heuristics."
+      "description": "Legacy internal step: identify coverage gaps and select exploratory heuristics."
     },
     {
       "name": "allocate",
       "path": "skills/allocate/SKILL.md",
-      "description": "Allocate coverage gaps to testing destinations."
+      "description": "Legacy internal step: allocate coverage gaps to testing destinations."
     },
     {
       "name": "handoff",
       "path": "skills/handoff/SKILL.md",
-      "description": "Create QA handoff issue on GitHub."
+      "description": "Legacy internal step: create QA handoff issue on GitHub."
     },
     {
       "name": "generate-charters",

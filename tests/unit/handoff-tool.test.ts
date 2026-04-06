@@ -578,6 +578,58 @@ describe("handoff tool", () => {
     expect(result.issueNumber).toBe(88);
   });
 
+  it("escapes double quotes in title when searching for an existing issue", async () => {
+    const workspace = await setupWorkspace();
+    const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);
+
+    await writeFile(
+      workspace.configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          repositoryRoot: ".",
+          scmProvider: "auto",
+          defaultLanguage: "ja",
+          paths: {
+            database: "exploratory-testing.db",
+            progressDirectory: ".exploratory-testing/progress",
+            progressSummary:
+              ".exploratory-testing/progress/progress-summary.md",
+            artifactsDirectory: "output",
+          },
+          publishDefaults: {
+            repository: "org/qa-handoff",
+            titlePrefix: 'QA "Handoff"',
+            findingsComment: false,
+            mode: "create-or-update",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    vi.mocked(findIssueBySearch).mockResolvedValue(null);
+    vi.mocked(createIssue).mockResolvedValue({
+      number: 90,
+      url: "https://github.com/org/qa-handoff/issues/90",
+      title: 'QA "Handoff": PR #42 — handoff checklist',
+    });
+
+    await runPublishHandoffLifecycle({
+      riskAssessmentId,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    expect(vi.mocked(findIssueBySearch)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        searchQuery: '"QA \\"Handoff\\": PR #42 — handoff checklist" in:title',
+      }),
+    );
+  });
+
   it("adds findings comment during publish lifecycle when config enables it", async () => {
     const workspace = await setupWorkspace();
     const { riskAssessmentId, sessionId } = seedHandoffPipeline(

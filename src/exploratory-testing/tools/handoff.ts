@@ -92,6 +92,7 @@ export type HandoffSummary = {
 
 export type HandoffMarkdownResult = {
   readonly riskAssessmentId: number;
+  readonly prNumber: number;
   readonly repository: string;
   readonly markdown: string;
   readonly sections: HandoffSections;
@@ -156,6 +157,7 @@ export async function generateHandoffMarkdown(
 
   return {
     riskAssessmentId: input.riskAssessmentId,
+    prNumber: context.prIntake.prNumber,
     repository: context.prIntake.repository,
     markdown: renderHandoffMarkdown(
       context.prIntake,
@@ -209,9 +211,9 @@ function resolvePublishDefaults(
 ): ResolvedPublishDefaults {
   const repository = resolvePublishRepository(config, markdown.repository);
   const titlePrefix = config.publishDefaults.titlePrefix ?? "QA";
-  const prNumber = extractPrNumber(markdown.markdown);
   const title =
-    input.title ?? `${titlePrefix}: PR #${prNumber} — handoff checklist`;
+    input.title ??
+    `${titlePrefix}: PR #${markdown.prNumber} — handoff checklist`;
 
   const labels =
     input.labels ?? normalizeOptionalStringArray(config.publishDefaults.labels);
@@ -245,10 +247,12 @@ function normalizeOptionalStringArray(
 }
 
 async function createLifecycleIssue(
+  config: ResolvedPluginConfig,
   input: PublishHandoffLifecycleInput,
 ): Promise<PublishHandoffLifecycleResult> {
   const created = await runCreateHandoffIssue(input);
   const findingsCommentUrl = await maybeAddFindingsComment(
+    config,
     input,
     created.issue.number,
   );
@@ -263,6 +267,7 @@ async function createLifecycleIssue(
 }
 
 async function updateLifecycleIssue(
+  config: ResolvedPluginConfig,
   input: PublishHandoffLifecycleInput,
   title: string,
   issueNumber: number,
@@ -275,6 +280,7 @@ async function updateLifecycleIssue(
     manifestPath: input.manifestPath,
   });
   const findingsCommentUrl = await maybeAddFindingsComment(
+    config,
     input,
     updated.issueNumber,
   );
@@ -289,6 +295,7 @@ async function updateLifecycleIssue(
 }
 
 async function maybeAddFindingsComment(
+  config: ResolvedPluginConfig,
   input: PublishHandoffLifecycleInput,
   issueNumber: number,
 ): Promise<string | undefined> {
@@ -296,7 +303,6 @@ async function maybeAddFindingsComment(
     return undefined;
   }
 
-  const config = await readPluginConfig(input.configPath, input.manifestPath);
   if (!config.publishDefaults.findingsComment) {
     return undefined;
   }
@@ -387,17 +393,18 @@ export async function runPublishHandoffLifecycle(
   const publishMode = config.publishDefaults.mode ?? "create-or-update";
 
   if (publishMode === "create") {
-    return createLifecycleIssue(input);
+    return createLifecycleIssue(config, input);
   }
 
   if (publishMode === "update") {
     if (input.issueNumber === undefined) {
       throw new Error(
-        "publishDefaults.mode=update の場合は target issue number が必要です。",
+        "target issue number is required when publishDefaults.mode is 'update'.",
       );
     }
 
     return updateLifecycleIssue(
+      config,
       input,
       publishDefaults.title,
       input.issueNumber,
@@ -406,6 +413,7 @@ export async function runPublishHandoffLifecycle(
 
   if (input.issueNumber !== undefined) {
     return updateLifecycleIssue(
+      config,
       input,
       publishDefaults.title,
       input.issueNumber,
@@ -415,11 +423,12 @@ export async function runPublishHandoffLifecycle(
   const existingIssue = await findIssueBySearch({
     repositoryRoot: config.workspaceRoot,
     repository: publishDefaults.repository,
-    searchQuery: `"${publishDefaults.title}" in:title`,
+    searchQuery: `"${escapeSearchQueryValue(publishDefaults.title)}" in:title`,
   });
 
   if (existingIssue) {
     return updateLifecycleIssue(
+      config,
       input,
       existingIssue.title,
       existingIssue.number,
@@ -427,7 +436,7 @@ export async function runPublishHandoffLifecycle(
     );
   }
 
-  return createLifecycleIssue(input);
+  return createLifecycleIssue(config, input);
 }
 
 export function groupBySection(
@@ -854,12 +863,6 @@ function resolveFindingsContext(
   return { session, prIntake };
 }
 
-function extractPrNumber(markdown: string): number {
-  const match = markdown.match(/PR #(\d+)/);
-
-  if (!match) {
-    return 0;
-  }
-
-  return Number(match[1]);
+function escapeSearchQueryValue(value: string): string {
+  return value.replaceAll('"', '\\"');
 }

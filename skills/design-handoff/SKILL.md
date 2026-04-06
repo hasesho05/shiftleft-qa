@@ -76,7 +76,7 @@ bun run dev design-handoff --pr <number>
 - `Already Covered` / `Should Automate` / `Manual Exploration Required` の分離が妥当であること。
 - `Layer Applicability` が `primary` / `secondary` / `not-primary` / `no-product-change` を保守的に表現していること。
 - manual exploration が広がりすぎていないこと。
-- charter 生成が必要なら、この段階で「どのテーマを短い実行単位に落とすか」まで判断できること。
+- manual exploration のテーマが、そのまま QA 担当者の実行単位として使える粒度であること。
 - 次の skill に進む前に、`AskUserQuestion` でユーザー確認が取れていること。
 
 ## 次の Step

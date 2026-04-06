@@ -201,10 +201,10 @@ bun run dev analyze-pr --pr <number>
 bun run dev design-handoff --pr <number>
 bun run dev publish-handoff --pr <number>
 
-# Handoff 操作
-bun run dev handoff create-issue --pr <number>
-bun run dev handoff update-issue --pr <number> --issue-number <number>
-bun run dev handoff add-comment --pr <number> --issue-number <number>
+# Handoff 操作（低レベル GitHub Issue 操作）
+bun run dev handoff create-issue --repository <owner/repo> --title <title> --body <markdown>
+bun run dev handoff update-issue --repository <owner/repo> --issue-number <number> --body <markdown>
+bun run dev handoff add-comment --repository <owner/repo> --issue-number <number> --body <markdown>
 ```
 
 ## 注意事項

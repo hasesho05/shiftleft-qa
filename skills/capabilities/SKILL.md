@@ -25,13 +25,12 @@ description: shiftleft-qa の対応範囲、前提、非対応事項を案内す
 - local DB / progress files は cache / resumable state として扱う
 - manual exploration を増やすためではなく、manual に残る前に削るための plugin
 - exported artifacts は補助資料
-- 現在の実装では一部 command が `setup` / `config.json` を前提にするが、これは legacy persistence layer 寄りの都合である
+- `config.json` は optional cache / resume layer であり、なくても public flow は動作する
 - CLI は事実取得と publish の実装層であり、意味づけと次 step への確認は skill 側が持つ
 
 ## 案内の終わり方
 
 - 利用者が `analyze-pr` から始める前提を明示する
-- 必要なら `setup` は legacy / advanced path だと補足する
 - `AskUserQuestion` で `analyze-pr` に進んでよいかを確認して終える
 
 ## 会話テンプレート
@@ -47,12 +46,11 @@ description: shiftleft-qa の対応範囲、前提、非対応事項を案内す
 
 ### 終了時
 
-- `setup` は通常利用の入口ではないと必要に応じて補足する。
 - `AskUserQuestion` で `analyze-pr` に進んでよいかを確認して閉じる。
 
 例:
 
-- 「通常は `setup` ではなく `analyze-pr` から始めます。このまま `analyze-pr` に進めてよいですか。」
+- 「`analyze-pr` から始めます。進めてよいですか。」
 
 ## 次の Step
 

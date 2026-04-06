@@ -27,7 +27,7 @@
 
 ## Internal Implementation
 
-public skill は内部で分析用 tool 関数を合成して使う。
+public skill は内部で複数の tool 関数を合成して使う。
 
 Public skill | 処理内容
 --- | ---

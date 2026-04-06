@@ -55,17 +55,17 @@ bun run dev publish-handoff --pr <number>
 
 ## アーキテクチャ
 
-### 3層ステート管理（stateful-workflow-plugin-framework の核心）
+### ステート管理
 
 ```
 Skill Layer (skills/*/SKILL.md)
-  │  各スキルは「ステートレス関数」: ファイル群を読み → CLI で処理 → ファイル群を書く
+  │  各スキルは「ステートレス関数」: CLI で処理 → DB に永続化 → 結果を要約
   │  会話履歴への依存ゼロ（Auto Compact 耐性の鍵）
   ▼
-┌──────────┐  ┌──────────┐  ┌────────────────────────┐
-│  Config  │  │   CLI    │  │    Progress Files       │
-│ (JSON)   │  │(JSON I/O)│  │ (MD + YAML frontmatter) │
-└──────────┘  └────┬─────┘  └────────────────────────┘
+┌──────────┐  ┌──────────┐
+│  Config  │  │   CLI    │
+│ (JSON)   │  │(JSON I/O)│
+└──────────┘  └────┬─────┘
                    │
               ┌────▼─────┐
               │  SQLite   │
@@ -74,17 +74,16 @@ Skill Layer (skills/*/SKILL.md)
 ```
 
 - **Config** (`config.json`): 静的設定。パスは相対で保存し CLI 境界で絶対パスに解決
-- **Progress Files** (`.exploratory-testing/progress/`): ステップ間の引き継ぎ文書。frontmatter でメタデータ、本文でサマリー
-- **Database** (`exploratory-testing.db`): ローカルのドメインデータ格納先。再開可能なローカル状態であり、shared source of truth ではない（共有の handoff 先は GitHub Issue）。DB は直接触らず必ず CLI/repository module 経由
+- **Database** (`exploratory-testing.db`): ローカルのドメインデータ格納先。resumable cache であり、shared source of truth ではない（共有の handoff 先は GitHub Issue）。DB は直接触らず必ず CLI/repository module 経由
 
 ### Skill と CLI の責務分担
 
 | Skill (SKILL.md) | CLI (TypeScript) |
 |---|---|
-| ワークフロー制御・handover | PR/MR 取得・diff 解析 |
-| config/progress の Read/Write | test mapping・risk analysis |
-| CLI 呼び出し・結果要約 | charter material generation |
-| 次ステップへの誘導 | finding persistence・report 生成 |
+| ワークフロー制御（次 skill への確認） | PR/MR 取得・diff 解析 |
+| CLI 呼び出し・結果要約 | test mapping・risk analysis |
+| 不足文脈の AskUserQuestion | allocation・handoff markdown 生成 |
+| 成果の要約と次への誘導 | GitHub Issue publish |
 
 高度で再現性の高い処理は CLI 側に寄せ、Skill は呼び出しと制御に徹する。
 
@@ -94,9 +93,7 @@ Skill Layer (skills/*/SKILL.md)
 analyze-pr → design-handoff → publish-handoff
 ```
 
-内部的に analyze-pr は pr-intake / discover-context / map-tests / assess-gaps を順に実行する。
-design-handoff は allocate / handoff generate を実行する。
-publish-handoff は GitHub Issue を create / update する。
+各 skill は内部で複数の tool 関数を合成する。analyze-pr は PR 取得・変更分析・テスト対応付け・リスク評価、design-handoff は allocation と handoff markdown 生成、publish-handoff は GitHub Issue の create / update を実行する。
 
 ### ソースコードの構成
 
@@ -158,8 +155,7 @@ Hard rules:
 
 - ローカル state は会話ではなく files + local DB に永続化する（shared handoff は GitHub Issue）
 - advanced logic は CLI / TypeScript に置く
-- skill は workflow 制御と handover に寄せる
-- progress files は markdown + YAML frontmatter
+- skill は workflow 制御と成果要約に寄せる
 - DB は直接触らず CLI / repository module 経由
 - deterministic な処理を優先し LLM 依存ロジックを深い層に入れない
 

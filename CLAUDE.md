@@ -24,7 +24,7 @@ user-facing の flow は 3 つの public skill で完結する。
 2. `design-handoff` — already covered / should automate / manual exploration required を設計する
 3. `publish-handoff` — GitHub QA Issue を create / update する
 
-内部実装では、これらの public skill が分析用 tool 関数（`runPrIntake`, `runDiscoverContextFromIntake`, `runMapTestsFromAnalysis`, `runAssessGapsFromMapping`, `runAllocate`, `generateHandoffMarkdown` など）を合成して使う。個々の tool 関数は独立した user-facing workflow ではなく、public skill の内部実装レイヤーである。
+内部実装では、これらの public skill が内部 tool 関数（`runPrIntake`, `runDiscoverContextFromIntake`, `runMapTestsFromAnalysis`, `runAssessGapsFromMapping`, `runAllocate`, `generateHandoffMarkdown`, `runPublishHandoffLifecycle` など）を合成して使う。個々の tool 関数は独立した user-facing workflow ではなく、public skill の内部実装レイヤーである。
 
 - GitHub Issue が primary artifact
 - `config.json` / local DB は optional cache / resume layer

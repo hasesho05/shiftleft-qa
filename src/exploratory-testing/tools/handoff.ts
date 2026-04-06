@@ -7,15 +7,12 @@ import {
   type PersistedAllocationItem,
   type PersistedChangeAnalysis,
   type PersistedPrIntake,
-  type PersistedSession,
   type PersistedTestMapping,
   countAllocationItemsByDestination,
   findChangeAnalysisById,
   findIntentContext,
   findPrIntakeById,
   findRiskAssessmentById,
-  findSession,
-  findSessionChartersById,
   findTestMappingById,
   listAllocationItems,
 } from "../db/workspace-repository";
@@ -44,8 +41,6 @@ import {
   findIssueBySearch,
 } from "../scm/github-issues";
 import { readPluginConfig } from "./config";
-import { writeStepHandoverFromConfig } from "./progress";
-import { generateTriageReport } from "./triage-findings";
 
 export type { AddCommentInput, CreateIssueInput, EditIssueInput };
 
@@ -65,16 +60,8 @@ export type HandoffUpdateInput = HandoffGenerateInput & {
   readonly issueNumber: number;
 };
 
-export type HandoffFindingsInput = {
-  readonly issueNumber: number;
-  readonly sessionId: number;
-  readonly configPath?: string;
-  readonly manifestPath?: string;
-};
-
 export type PublishHandoffLifecycleInput = HandoffPublishInput & {
   readonly issueNumber?: number;
-  readonly sessionId?: number;
 };
 
 export type HandoffSections = {
@@ -114,11 +101,6 @@ export type UpdateHandoffIssueResult = {
   readonly issueNumber: number;
 };
 
-export type AddHandoffCommentResult = {
-  readonly comment: CreatedComment;
-  readonly body: string;
-};
-
 export type AddHandoffCommentRawResult = {
   readonly comment: CreatedComment;
 };
@@ -128,7 +110,6 @@ export type PublishHandoffLifecycleResult = {
   readonly issueNumber: number;
   readonly issueUrl?: string;
   readonly title: string;
-  readonly findingsCommentUrl?: string;
 };
 
 type HandoffContext = {
@@ -187,13 +168,6 @@ export async function runCreateHandoffIssue(
     assignees: publishDefaults.assignees,
   });
 
-  await writeStepHandoverFromConfig(config, {
-    stepName: "handoff",
-    status: "completed",
-    summary: buildHandoffProgressSummary(markdown.summary, issue.number),
-    body: buildHandoffProgressBody(markdown, issue.number, issue.url),
-  });
-
   return { markdown, issue };
 }
 
@@ -247,74 +221,39 @@ function normalizeOptionalStringArray(
 }
 
 async function createLifecycleIssue(
-  config: ResolvedPluginConfig,
+  _config: ResolvedPluginConfig,
   input: PublishHandoffLifecycleInput,
 ): Promise<PublishHandoffLifecycleResult> {
   const created = await runCreateHandoffIssue(input);
-  const findingsCommentUrl = await maybeAddFindingsComment(
-    config,
-    input,
-    created.issue.number,
-  );
 
   return {
     action: "created",
     issueNumber: created.issue.number,
     issueUrl: created.issue.url,
     title: created.issue.title,
-    findingsCommentUrl,
   };
 }
 
 async function updateLifecycleIssue(
-  config: ResolvedPluginConfig,
+  _config: ResolvedPluginConfig,
   input: PublishHandoffLifecycleInput,
   title: string,
   issueNumber: number,
   issueUrl?: string,
 ): Promise<PublishHandoffLifecycleResult> {
-  const updated = await runUpdateHandoffIssue({
+  await runUpdateHandoffIssue({
     riskAssessmentId: input.riskAssessmentId,
     issueNumber,
     configPath: input.configPath,
     manifestPath: input.manifestPath,
   });
-  const findingsCommentUrl = await maybeAddFindingsComment(
-    config,
-    input,
-    updated.issueNumber,
-  );
 
   return {
     action: "updated",
-    issueNumber: updated.issueNumber,
+    issueNumber,
     issueUrl,
     title,
-    findingsCommentUrl,
   };
-}
-
-async function maybeAddFindingsComment(
-  config: ResolvedPluginConfig,
-  input: PublishHandoffLifecycleInput,
-  issueNumber: number,
-): Promise<string | undefined> {
-  if (!input.sessionId) {
-    return undefined;
-  }
-
-  if (!config.publishDefaults.findingsComment) {
-    return undefined;
-  }
-
-  const result = await runAddHandoffComment({
-    issueNumber,
-    sessionId: input.sessionId,
-    configPath: input.configPath,
-    manifestPath: input.manifestPath,
-  });
-
-  return result.comment.url;
 }
 
 export async function runCreateHandoffIssueRaw(
@@ -337,13 +276,6 @@ export async function runUpdateHandoffIssue(
     body: markdown.markdown,
   });
 
-  await writeStepHandoverFromConfig(config, {
-    stepName: "handoff",
-    status: "completed",
-    summary: buildHandoffProgressSummary(markdown.summary, input.issueNumber),
-    body: buildHandoffProgressBody(markdown, input.issueNumber),
-  });
-
   return {
     markdown,
     issueNumber: input.issueNumber,
@@ -354,27 +286,6 @@ export async function runUpdateHandoffIssueBody(
   input: EditIssueInput,
 ): Promise<void> {
   await editIssueBody(input);
-}
-
-export async function runAddHandoffComment(
-  input: HandoffFindingsInput,
-): Promise<AddHandoffCommentResult> {
-  const config = await readPluginConfig(input.configPath, input.manifestPath);
-  const context = resolveFindingsContext(config, input.sessionId);
-  const report = await generateTriageReport({
-    sessionId: input.sessionId,
-    config,
-  });
-  const body = renderFindingsComment(context.session, report);
-
-  const comment = await addIssueComment({
-    repositoryRoot: config.workspaceRoot,
-    repository: resolvePublishRepository(config, context.prIntake.repository),
-    issueNumber: input.issueNumber,
-    body,
-  });
-
-  return { comment, body };
 }
 
 export async function runAddHandoffCommentRaw(
@@ -524,48 +435,6 @@ export function renderHandoffMarkdown(
   ].join("\n");
 }
 
-export function renderFindingsComment(
-  session: PersistedSession,
-  report: Awaited<ReturnType<typeof generateTriageReport>>,
-): string {
-  const lines = [
-    `## ${escapePipe(`Exploration Findings — Session: ${session.charterTitle}`)}`,
-    "",
-    `**Charter**: ${escapePipe(session.charterTitle)}`,
-    `**Status**: ${session.status}`,
-    `**Session ID**: ${session.id}`,
-    "",
-    "### Findings",
-    "",
-  ];
-
-  if (report.findings.length === 0) {
-    lines.push("_No findings from this session._", "");
-    return lines.join("\n");
-  }
-
-  for (const finding of report.findings) {
-    lines.push(
-      `#### ${escapePipe(finding.title)}`,
-      "",
-      `- **Type**: ${finding.type}`,
-      `- **Severity**: ${finding.severity}`,
-      `- **Description**: ${escapePipe(finding.description)}`,
-    );
-
-    if (finding.type === "automation-candidate") {
-      lines.push(
-        `- **Recommended layer**: ${finding.recommendedTestLayer ?? "—"}`,
-        `- **Rationale**: ${escapePipe(finding.automationRationale ?? "")}`,
-      );
-    }
-
-    lines.push("");
-  }
-
-  return lines.join("\n");
-}
-
 function renderIntentContextSection(
   intentContext?: IntentContext,
 ): readonly string[] {
@@ -697,47 +566,6 @@ function buildHandoffSummary(
   };
 }
 
-function buildHandoffProgressSummary(
-  summary: HandoffSummary,
-  issueNumber: number,
-): string {
-  return `Published QA handoff issue #${issueNumber}; manual: ${summary.manualCount}; automate: ${summary.automateCount}; covered: ${summary.coveredCount}`;
-}
-
-function buildHandoffProgressBody(
-  markdown: HandoffMarkdownResult,
-  issueNumber: number,
-  issueUrl?: string,
-): string {
-  const lines = [
-    `# QA Handoff Published (risk_assessment_id: ${markdown.riskAssessmentId})`,
-    "",
-    `- **Issue Number**: ${issueNumber}`,
-    `- **Repository**: ${escapePipe(markdown.repository)}`,
-  ];
-
-  if (issueUrl) {
-    lines.push(`- **Issue URL**: ${issueUrl}`);
-  }
-
-  lines.push(
-    "",
-    "## Allocation Summary",
-    "",
-    `- Total items: ${markdown.summary.totalItems}`,
-    `- Manual exploration: ${markdown.summary.manualCount}`,
-    `- Should automate: ${markdown.summary.automateCount}`,
-    `- Already covered: ${markdown.summary.coveredCount}`,
-    "",
-    "## Next step",
-    "",
-    "- generate-charters",
-    "",
-  );
-
-  return lines.join("\n");
-}
-
 async function resolveHandoffContext(
   input: HandoffGenerateInput,
 ): Promise<HandoffContext> {
@@ -803,64 +631,6 @@ async function resolveHandoffContext(
     counts,
     intentContext,
   };
-}
-
-function resolveFindingsContext(
-  config: ResolvedPluginConfig,
-  sessionId: number,
-): {
-  readonly session: PersistedSession;
-  readonly prIntake: PersistedPrIntake;
-} {
-  const session = findSession(config.paths.database, sessionId);
-
-  if (!session) {
-    throw new Error(`Session not found: id=${sessionId}`);
-  }
-
-  const charters = findSessionChartersById(
-    config.paths.database,
-    session.sessionChartersId,
-  );
-
-  if (!charters) {
-    throw new Error(
-      `Session charters not found for id=${session.sessionChartersId}.`,
-    );
-  }
-
-  const riskAssessment = findRiskAssessmentById(
-    config.paths.database,
-    charters.riskAssessmentId,
-  );
-
-  if (!riskAssessment) {
-    throw new Error(
-      `Risk assessment not found for id=${charters.riskAssessmentId}.`,
-    );
-  }
-
-  const testMapping = findTestMappingById(
-    config.paths.database,
-    riskAssessment.testMappingId,
-  );
-
-  if (!testMapping) {
-    throw new Error(
-      `Test mapping not found for id=${riskAssessment.testMappingId}.`,
-    );
-  }
-
-  const prIntake = findPrIntakeById(
-    config.paths.database,
-    testMapping.prIntakeId,
-  );
-
-  if (!prIntake) {
-    throw new Error(`PR intake not found for id=${testMapping.prIntakeId}.`);
-  }
-
-  return { session, prIntake };
 }
 
 function escapeSearchQueryValue(value: string): string {

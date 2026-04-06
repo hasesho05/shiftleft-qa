@@ -1,14 +1,5 @@
 import { spawnSync } from "node:child_process";
 
-import {
-  type DivergenceEntry,
-  type StaleStepInfo,
-  detectAllStaleSteps,
-  detectProgressDivergence,
-  getDatabasePragmas,
-} from "../db/workspace-repository";
-import type { ResolvedPluginConfig } from "../models/config";
-
 export type ToolStatus = "ok" | "missing";
 
 export interface ToolCheck {
@@ -86,43 +77,5 @@ export function createEnvironmentReport(): EnvironmentReport {
       nodeVersion: process.versions.node ?? null,
     },
     tools,
-  };
-}
-
-// --- Workspace health check ---
-
-export type WorkspaceHealthReport = {
-  readonly databaseAccessible: boolean;
-  readonly divergences: readonly DivergenceEntry[];
-  readonly staleSteps: readonly StaleStepInfo[];
-};
-
-export async function checkWorkspaceHealth(
-  config: ResolvedPluginConfig,
-): Promise<WorkspaceHealthReport> {
-  let databaseAccessible = false;
-
-  try {
-    getDatabasePragmas(config.paths.database);
-    databaseAccessible = true;
-  } catch {
-    return {
-      databaseAccessible: false,
-      divergences: [],
-      staleSteps: [],
-    };
-  }
-
-  const divergenceReport = await detectProgressDivergence(
-    config.paths.database,
-    config.workspaceRoot,
-  );
-
-  const staleSteps = detectAllStaleSteps(config.paths.database);
-
-  return {
-    databaseAccessible,
-    divergences: divergenceReport.divergences,
-    staleSteps,
   };
 }

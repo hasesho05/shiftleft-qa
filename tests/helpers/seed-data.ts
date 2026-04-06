@@ -1,19 +1,14 @@
 import {
   saveAllocationItems,
   saveChangeAnalysis,
-  saveObservation,
   savePrIntake,
   saveRiskAssessment,
-  saveSession,
-  saveSessionCharters,
   saveTestMapping,
-  updateSessionStatus,
 } from "../../src/exploratory-testing/db/workspace-repository";
 import type { AllocationItem } from "../../src/exploratory-testing/models/allocation";
 import type { ChangeAnalysisResult } from "../../src/exploratory-testing/models/change-analysis";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
 import type { RiskAssessmentResult } from "../../src/exploratory-testing/models/risk-assessment";
-import type { SessionCharterGenerationResult } from "../../src/exploratory-testing/models/session-charter";
 import type { TestMappingResult } from "../../src/exploratory-testing/models/test-mapping";
 
 export function createSamplePrMetadata(): PrMetadata {
@@ -42,8 +37,7 @@ export function createSamplePrMetadata(): PrMetadata {
   };
 }
 
-export function seedSessionCharters(databasePath: string): {
-  sessionChartersId: number;
+export function seedAnalysisChain(databasePath: string): {
   riskAssessmentId: number;
 } {
   const prIntake = savePrIntake(databasePath, createSamplePrMetadata());
@@ -81,27 +75,8 @@ export function seedSessionCharters(databasePath: string): {
     explorationThemes: [],
     assessedAt: "2026-04-01T00:00:00Z",
   } satisfies RiskAssessmentResult);
-  const sessionCharters = saveSessionCharters(databasePath, {
-    riskAssessmentId: riskAssessment.id,
-    charters: [
-      {
-        title: "Auth error handling",
-        goal: "Verify error responses",
-        scope: ["src/middleware/auth.ts"],
-        selectedFrameworks: ["error-guessing", "boundary-value-analysis"],
-        preconditions: [],
-        observationTargets: [
-          { category: "network", description: "Check responses" },
-        ],
-        stopConditions: ["All tested"],
-        timeboxMinutes: 20,
-      },
-    ],
-    generatedAt: "2026-04-01T00:00:00Z",
-  } satisfies SessionCharterGenerationResult);
 
   return {
-    sessionChartersId: sessionCharters.id,
     riskAssessmentId: riskAssessment.id,
   };
 }
@@ -161,43 +136,11 @@ export function createSampleAllocationItems(
   ];
 }
 
-export function seedSessionChartersWithAllocations(databasePath: string): {
-  sessionChartersId: number;
+export function seedAnalysisChainWithAllocations(databasePath: string): {
   riskAssessmentId: number;
 } {
-  const result = seedSessionCharters(databasePath);
+  const result = seedAnalysisChain(databasePath);
   const items = createSampleAllocationItems(result.riskAssessmentId);
   saveAllocationItems(databasePath, result.riskAssessmentId, items);
   return result;
-}
-
-export function seedSessionWithObservation(databasePath: string): {
-  sessionId: number;
-  observationId: number;
-} {
-  const { sessionChartersId } = seedSessionCharters(databasePath);
-
-  const session = saveSession(databasePath, {
-    sessionChartersId,
-    charterIndex: 0,
-    charterTitle: "Auth error handling",
-  });
-  updateSessionStatus(databasePath, {
-    sessionId: session.id,
-    status: "in_progress",
-    startedAt: "2026-04-01T10:00:00Z",
-  });
-
-  const observation = saveObservation(databasePath, {
-    sessionId: session.id,
-    targetedHeuristic: "error-guessing",
-    action: "Submit invalid credentials",
-    expected: "Error message",
-    actual: "Application crashed",
-    outcome: "fail",
-    note: "Unhandled rejection",
-    evidencePath: null,
-  });
-
-  return { sessionId: session.id, observationId: observation.id };
 }

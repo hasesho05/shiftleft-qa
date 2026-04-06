@@ -8,7 +8,6 @@ import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake"
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import { runDiscoverContextFromIntake } from "../../src/exploratory-testing/tools/discover-context";
 import { runMapTestsFromAnalysis } from "../../src/exploratory-testing/tools/map-tests";
-import { readStepHandoverDocument } from "../../src/exploratory-testing/tools/progress";
 import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
 import {
   type TestWorkspace,
@@ -75,7 +74,7 @@ describe("runMapTestsFromAnalysis", () => {
     return { ...workspace, databasePath: result.databasePath };
   }
 
-  it("maps test assets and saves results to DB and handover", async () => {
+  it("maps test assets and saves results to DB", async () => {
     const workspace = await setupWorkspace();
     const metadata = createSampleMetadata();
     const config = await readPluginConfig(
@@ -102,17 +101,6 @@ describe("runMapTestsFromAnalysis", () => {
       contextResult.persisted.id,
     );
     expect(dbRecord).not.toBeNull();
-
-    // Verify handover
-    expect(result.handover.snapshot.stepName).toBe("map-tests");
-    expect(result.handover.snapshot.status).toBe("completed");
-
-    const handoverDoc = await readStepHandoverDocument(
-      result.handover.filePath,
-    );
-    expect(handoverDoc.frontmatter.step_name).toBe("map-tests");
-    expect(handoverDoc.body).toContain("Test Assets");
-    expect(handoverDoc.body).toContain("Coverage Gap Map");
   });
 
   it("detects missing test layers", async () => {

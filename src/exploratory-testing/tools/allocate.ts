@@ -28,10 +28,6 @@ import type {
   TestLayer,
 } from "../models/test-mapping";
 import { readPluginConfig } from "./config";
-import {
-  type StepHandoverWriteResult,
-  writeStepHandoverFromConfig,
-} from "./progress";
 
 export type AllocateInput = {
   readonly riskAssessmentId: number;
@@ -50,7 +46,6 @@ export type AllocateResult = {
   readonly riskAssessmentId: number;
   readonly items: readonly PersistedAllocationItem[];
   readonly destinationCounts: AllocationDestinationCounts;
-  readonly handover: StepHandoverWriteResult;
 };
 
 export type ListAllocationResult = {
@@ -96,33 +91,11 @@ export async function runAllocate(
     input.riskAssessmentId,
   );
 
-  const summary = buildAllocateHandoverSummary(persisted, destinationCounts);
-  const handover = await writeStepHandoverFromConfig(config, {
-    stepName: "allocate",
-    status: "completed",
-    summary,
-  });
-
   return {
     riskAssessmentId: input.riskAssessmentId,
     items: persisted,
     destinationCounts,
-    handover,
   };
-}
-
-function buildAllocateHandoverSummary(
-  items: readonly PersistedAllocationItem[],
-  counts: AllocationDestinationCounts,
-): string {
-  const parts: string[] = [`${items.length} items allocated`];
-  for (const destination of ALLOCATION_DESTINATIONS) {
-    const count = counts[destination];
-    if (count > 0) {
-      parts.push(`${destination}: ${count}`);
-    }
-  }
-  return parts.join("; ");
 }
 
 export async function listAllocation(

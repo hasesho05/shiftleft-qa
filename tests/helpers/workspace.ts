@@ -35,65 +35,28 @@ export async function createTestWorkspace(): Promise<TestWorkspace> {
         },
         skills: [
           {
-            name: "setup",
-            path: "skills/setup/SKILL.md",
+            name: "capabilities",
+            path: "skills/capabilities/SKILL.md",
             description:
-              "Initialize config, workspace state, and progress tracking.",
+              "shiftleft-qa の対応範囲、前提、非対応事項を案内する。",
           },
           {
-            name: "pr-intake",
-            path: "skills/pr-intake/SKILL.md",
-            description: "Ingest PR or MR metadata and changed files.",
-          },
-          {
-            name: "discover-context",
-            path: "skills/discover-context/SKILL.md",
-            description: "Analyze code and diff context before exploration.",
-          },
-          {
-            name: "map-tests",
-            path: "skills/map-tests/SKILL.md",
-            description: "Map related automated tests and summarize coverage.",
-          },
-          {
-            name: "assess-gaps",
-            path: "skills/assess-gaps/SKILL.md",
+            name: "analyze-pr",
+            path: "skills/analyze-pr/SKILL.md",
             description:
-              "Identify coverage gaps and select exploratory heuristics.",
+              "Public flow 1/3: PR を解析し intent context・既存テスト・risk を一括取得する。",
           },
           {
-            name: "allocate",
-            path: "skills/allocate/SKILL.md",
-            description: "Allocate coverage gaps to testing destinations.",
-          },
-          {
-            name: "handoff",
-            path: "skills/handoff/SKILL.md",
-            description: "Create QA handoff issue on GitHub.",
-          },
-          {
-            name: "generate-charters",
-            path: "skills/generate-charters/SKILL.md",
+            name: "design-handoff",
+            path: "skills/design-handoff/SKILL.md",
             description:
-              "Generate short, executable exploratory session charters.",
+              "Public flow 2/3: analysis から QA handoff ドラフトを生成する。",
           },
           {
-            name: "run-session",
-            path: "skills/run-session/SKILL.md",
+            name: "publish-handoff",
+            path: "skills/publish-handoff/SKILL.md",
             description:
-              "Record exploratory session observations and evidence.",
-          },
-          {
-            name: "triage-findings",
-            path: "skills/triage-findings/SKILL.md",
-            description:
-              "Classify findings into defects, spec gaps, and automation candidates.",
-          },
-          {
-            name: "export-artifacts",
-            path: "skills/export-artifacts/SKILL.md",
-            description:
-              "Export the brief, gap map, charters, and findings reports.",
+              "Public flow 3/3: QA handoff を GitHub Issue として publish / update する。",
           },
         ],
       },

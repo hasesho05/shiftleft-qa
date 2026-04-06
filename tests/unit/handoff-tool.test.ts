@@ -12,14 +12,9 @@ import {
   countAllocationItemsByDestination,
   saveAllocationItems,
   saveChangeAnalysis,
-  saveFinding,
-  saveObservation,
   savePrIntake,
   saveRiskAssessment,
-  saveSession,
-  saveSessionCharters,
   saveTestMapping,
-  updateSessionStatus,
 } from "../../src/exploratory-testing/db/workspace-repository";
 import { collectStabilityNotesFromTestMapping } from "../../src/exploratory-testing/lib/render-stability-notes";
 import type { AllocationItem } from "../../src/exploratory-testing/models/allocation";
@@ -27,10 +22,8 @@ import type { ChangeAnalysisResult } from "../../src/exploratory-testing/models/
 import type { IntentContext } from "../../src/exploratory-testing/models/intent-context";
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
 import type { RiskAssessmentResult } from "../../src/exploratory-testing/models/risk-assessment";
-import type { SessionCharterGenerationResult } from "../../src/exploratory-testing/models/session-charter";
 import type { TestMappingResult } from "../../src/exploratory-testing/models/test-mapping";
 import {
-  addIssueComment,
   createIssue,
   editIssueBody,
   findIssueBySearch,
@@ -38,16 +31,12 @@ import {
 import {
   generateHandoffMarkdown,
   groupBySection,
-  renderFindingsComment,
   renderHandoffMarkdown,
-  runAddHandoffComment,
   runCreateHandoffIssue,
   runPublishHandoffLifecycle,
   runUpdateHandoffIssue,
 } from "../../src/exploratory-testing/tools/handoff";
-import { readStepHandoverDocument } from "../../src/exploratory-testing/tools/progress";
 import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
-import type { generateTriageReport } from "../../src/exploratory-testing/tools/triage-findings";
 import {
   type TestWorkspace,
   cleanupTestWorkspace,
@@ -222,7 +211,6 @@ describe("handoff tool", () => {
 
   function seedHandoffPipeline(databasePath: string): {
     riskAssessmentId: number;
-    sessionId: number;
     prIntake: ReturnType<typeof savePrIntake>;
   } {
     const prIntake = savePrIntake(databasePath, createSamplePrMetadata());
@@ -244,87 +232,8 @@ describe("handoff tool", () => {
       createAllocationItems(riskAssessment.id),
     );
 
-    const sessionCharters = saveSessionCharters(databasePath, {
-      riskAssessmentId: riskAssessment.id,
-      charters: [
-        {
-          title: "Retry resilience",
-          goal: "Observe timeout behavior",
-          scope: ["src/clients/payment-gateway.ts"],
-          selectedFrameworks: ["error-guessing"],
-          preconditions: [],
-          observationTargets: [
-            {
-              category: "network",
-              description: "Observe timeout and retry requests",
-            },
-          ],
-          stopConditions: ["Timebox elapsed"],
-          timeboxMinutes: 20,
-        },
-      ],
-      generatedAt: "2026-04-01T00:00:00Z",
-    } satisfies SessionCharterGenerationResult);
-
-    const session = saveSession(databasePath, {
-      sessionChartersId: sessionCharters.id,
-      charterIndex: 0,
-      charterTitle: "Retry resilience",
-    });
-    updateSessionStatus(databasePath, {
-      sessionId: session.id,
-      status: "completed",
-      startedAt: "2026-04-01T10:00:00Z",
-      completedAt: "2026-04-01T10:20:00Z",
-    });
-
-    const observationOne = saveObservation(databasePath, {
-      sessionId: session.id,
-      targetedHeuristic: "error-guessing",
-      action: "Trigger gateway timeout",
-      expected: "Single retry request",
-      actual: "Duplicate retry request",
-      outcome: "fail",
-      note: "",
-      evidencePath: null,
-    });
-
-    const observationTwo = saveObservation(databasePath, {
-      sessionId: session.id,
-      targetedHeuristic: "boundary-value-analysis",
-      action: "Retry after timeout",
-      expected: "Stable contract behavior",
-      actual: "Needs automated coverage",
-      outcome: "suspicious",
-      note: "",
-      evidencePath: null,
-    });
-
-    saveFinding(databasePath, {
-      sessionId: session.id,
-      observationId: observationOne.id,
-      type: "defect",
-      title: "Duplicate retry request",
-      description: "Observed duplicate request after timeout",
-      severity: "high",
-      recommendedTestLayer: null,
-      automationRationale: null,
-    });
-
-    saveFinding(databasePath, {
-      sessionId: session.id,
-      observationId: observationTwo.id,
-      type: "automation-candidate",
-      title: "Retry backoff contract",
-      description: "Should be pinned with integration coverage",
-      severity: "medium",
-      recommendedTestLayer: "integration",
-      automationRationale: "Gateway timeout path is deterministic enough",
-    });
-
     return {
       riskAssessmentId: riskAssessment.id,
-      sessionId: session.id,
       prIntake,
     };
   }
@@ -390,14 +299,6 @@ describe("handoff tool", () => {
       }),
     );
     expect(result.issue.number).toBe(42);
-
-    const handover = await readStepHandoverDocument(
-      `${workspace.root}/.exploratory-testing/progress/07-handoff.md`,
-    );
-    expect(handover.frontmatter.step_name).toBe("handoff");
-    expect(handover.frontmatter.status).toBe("completed");
-    expect(handover.body).toContain("Issue Number");
-    expect(handover.body).toContain("generate-charters");
   });
 
   it("applies publish defaults from config when creating a handoff issue", async () => {
@@ -630,68 +531,6 @@ describe("handoff tool", () => {
     );
   });
 
-  it("adds findings comment during publish lifecycle when config enables it", async () => {
-    const workspace = await setupWorkspace();
-    const { riskAssessmentId, sessionId } = seedHandoffPipeline(
-      workspace.databasePath,
-    );
-
-    await writeFile(
-      workspace.configPath,
-      JSON.stringify(
-        {
-          version: 1,
-          repositoryRoot: ".",
-          scmProvider: "auto",
-          defaultLanguage: "ja",
-          paths: {
-            database: "exploratory-testing.db",
-            progressDirectory: ".exploratory-testing/progress",
-            progressSummary:
-              ".exploratory-testing/progress/progress-summary.md",
-            artifactsDirectory: "output",
-          },
-          publishDefaults: {
-            repository: "org/qa-handoff",
-            titlePrefix: "QA Handoff",
-            labels: ["qa-handoff"],
-            assignees: [],
-            findingsComment: true,
-            mode: "create",
-          },
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
-
-    vi.mocked(createIssue).mockResolvedValue({
-      number: 55,
-      url: "https://github.com/org/qa-handoff/issues/55",
-      title: "QA Handoff: PR #42 — handoff checklist",
-    });
-    vi.mocked(addIssueComment).mockResolvedValue({
-      url: "https://github.com/org/qa-handoff/issues/55#issuecomment-2",
-    });
-
-    const result = await runPublishHandoffLifecycle({
-      riskAssessmentId,
-      sessionId,
-      configPath: workspace.configPath,
-      manifestPath: workspace.manifestPath,
-    });
-
-    expect(result.action).toBe("created");
-    expect(result.issueNumber).toBe(55);
-    expect(result.findingsCommentUrl).toContain("issuecomment-2");
-    expect(vi.mocked(addIssueComment)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        issueNumber: 55,
-      }),
-    );
-  });
-
   it("updates an existing issue body from allocation data", async () => {
     const workspace = await setupWorkspace();
     const { riskAssessmentId } = seedHandoffPipeline(workspace.databasePath);
@@ -741,102 +580,6 @@ describe("handoff tool", () => {
       }),
     );
     expect(result.issueNumber).toBe(77);
-
-    const handover = await readStepHandoverDocument(
-      `${workspace.root}/.exploratory-testing/progress/07-handoff.md`,
-    );
-    expect(handover.frontmatter.step_name).toBe("handoff");
-    expect(handover.frontmatter.status).toBe("completed");
-    expect(handover.body).toContain("Issue Number");
-  });
-
-  it("renders findings and posts them as a comment", async () => {
-    const workspace = await setupWorkspace();
-    const { sessionId } = seedHandoffPipeline(workspace.databasePath);
-
-    await writeFile(
-      workspace.configPath,
-      JSON.stringify(
-        {
-          version: 1,
-          repositoryRoot: ".",
-          scmProvider: "auto",
-          defaultLanguage: "ja",
-          paths: {
-            database: "exploratory-testing.db",
-            progressDirectory: ".exploratory-testing/progress",
-            progressSummary:
-              ".exploratory-testing/progress/progress-summary.md",
-            artifactsDirectory: "output",
-          },
-          publishDefaults: {
-            repository: "org/qa-handoff",
-            mode: "create-or-update",
-          },
-        },
-        null,
-        2,
-      ),
-      "utf8",
-    );
-
-    vi.mocked(addIssueComment).mockResolvedValue({
-      url: "https://github.com/org/qa-handoff/issues/42#issuecomment-1",
-    });
-
-    const result = await runAddHandoffComment({
-      issueNumber: 42,
-      sessionId,
-      configPath: workspace.configPath,
-      manifestPath: workspace.manifestPath,
-    });
-
-    expect(vi.mocked(addIssueComment)).toHaveBeenCalledOnce();
-    expect(vi.mocked(addIssueComment)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        repository: "org/qa-handoff",
-        issueNumber: 42,
-      }),
-    );
-    expect(result.body).toContain("Duplicate retry request");
-    expect(result.body).toContain("Recommended layer");
-    expect(result.comment.url).toContain("issuecomment-1");
-  });
-
-  it("renders a no-findings comment when the triage report is empty", async () => {
-    const session = {
-      id: 1,
-      sessionChartersId: 1,
-      charterIndex: 0,
-      charterTitle: "Retry resilience",
-      status: "completed",
-      startedAt: null,
-      interruptedAt: null,
-      completedAt: null,
-      interruptReason: null,
-      createdAt: "2026-04-01T00:00:00Z",
-      updatedAt: "2026-04-01T00:00:00Z",
-    } as const;
-    const report = {
-      sessionId: 1,
-      totalFindings: 0,
-      countByType: {
-        defect: 0,
-        "spec-gap": 0,
-        "automation-candidate": 0,
-      },
-      countBySeverity: {
-        low: 0,
-        medium: 0,
-        high: 0,
-        critical: 0,
-      },
-      findings: [],
-    } satisfies Awaited<ReturnType<typeof generateTriageReport>>;
-
-    expect(renderFindingsComment(session, report)).toContain(
-      "_No findings from this session._",
-    );
   });
 
   it("renders confidence bucket and hypothesis disclaimer in handoff markdown", async () => {

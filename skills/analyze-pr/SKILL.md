@@ -14,7 +14,7 @@ PR を読んで、次の handoff 設計に必要な事実をまとめる。
 - changed files
 - 既存テストと layer applicability
 
-この skill は、内部的に pr-intake / discover-context / map-tests / assess-gaps を順に実行し、結果を統合する。
+この skill は、内部的に PR 取得・変更分析・テスト対応付け・リスク評価を順に実行し、結果を統合する。
 
 ## デフォルトの考え方
 
@@ -26,7 +26,7 @@ PR を読んで、次の handoff 設計に必要な事実をまとめる。
 ## 実行手順
 
 1. `bun run dev analyze-pr --pr <number>` を実行する。
-   - 内部で pr-intake / discover-context / map-tests / assess-gaps を順に実行し、結果を統合する。
+   - 内部で PR 取得 → 変更分析 → テスト対応付け → リスク評価を順に実行し、結果を統合する。
    - 返却 JSON に internal ID は含まれない。
 2. 返却 JSON から intent context / changed files / test coverage / risk highlights / layer applicability を読み取る。
 3. 事実だけでは intent や acceptance criteria が足りない場合は、`AskUserQuestion` で不足文脈を確認する。

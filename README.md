@@ -27,7 +27,7 @@ QA / reviewer | GitHub Issue を起点に manual exploration を再開する | F
 
 最終形では、CLI が主フローを駆動するのではなく、`analyze-pr` → `design-handoff` → `publish-handoff` の 3 つの public skill が順にリレーする形を目指します。
 
-`publish-handoff` で使う publish policy は `config.json` に default 値として保存してよく、空の項目は skill 実行時に確認する運用を想定しています。CLI 単体での対話補完はまだ完成していません。
+`publish-handoff` で使う publish policy は `config.json` に default 値として保存してよく、空の項目は skill 実行時に `AskUserQuestion` で確認する運用を想定しています。CLI 単体での対話補完はまだ完成していません。
 
 ## 対応範囲
 
@@ -92,8 +92,8 @@ bun run check
 
 1. 必要なら `capabilities` で前提と非対応を確認する
 2. `analyze-pr` で PR / related issue / 既存テストを整理する
-3. 不足文脈があれば、その skill の中でユーザーに確認する
-4. skill の終わりで成果を要約し、次の skill に進んでよいか確認する
+3. 不足文脈があれば、その skill の中で `AskUserQuestion` を使って確認する
+4. skill の終わりで成果を要約し、`AskUserQuestion` で次の skill に進んでよいか確認する
 5. `design-handoff` で manual exploration に残す項目を絞る
 6. `publish-handoff` で GitHub QA Issue を publish / update する
 7. 必要なときだけ `charters` / `findings` / `export` 相当の補助フローを使う
@@ -120,25 +120,25 @@ Public skill | 吸収していく旧 skill / step
 
 - PR / related issue / acceptance criteria / existing tests / diff を読む
 - CLI と GitHub から取れる事実を先に集める
-- それでも不足する文脈だけをユーザーに質問する
+- それでも不足する文脈だけを `AskUserQuestion` で質問する
 - 整理結果を要約する
-- `design-handoff` に進んでよいか確認する
+- `AskUserQuestion` で `design-handoff` に進んでよいか確認する
 
 `design-handoff`
 
 - `already covered` / `should automate` / `manual exploration required` を整理する
 - handoff draft を作る
-- 不足する判断材料があればユーザーに質問する
+- 不足する判断材料があれば `AskUserQuestion` で質問する
 - draft を要約する
-- `publish-handoff` に進んでよいか確認する
+- `AskUserQuestion` で `publish-handoff` に進んでよいか確認する
 
 `publish-handoff`
 
 - GitHub Issue を create / update する
 - 必要なら findings comment を追加する
-- publish 前に title / target issue / scope を確認してよい
+- publish 前に title / target issue / scope を `AskUserQuestion` で確認してよい
 - `config.json` の `publishDefaults` に target repository / title prefix / labels などがあれば既定値として使う
-- 空の項目は skill 実行時に確認する想定だが、CLI 単体での対話補完はまだ実装途中
+- 空の項目は skill 実行時に `AskUserQuestion` で確認する想定だが、CLI 単体での対話補完はまだ実装途中
 - 完了後に結果を返す
 
 ### Claude Code での開始例
@@ -174,7 +174,7 @@ capabilities
 スキル | 役割
 --- | ---
 `capabilities` | 対応範囲・前提・非対応を案内する
-`analyze-pr` | `pr-intake` / `discover-context` / `map-tests` 相当を吸収し、PR / related issue / changed files / 既存テストを整理し、不足文脈があれば質問する
+`analyze-pr` | `pr-intake` / `discover-context` / `map-tests` 相当を吸収し、PR / related issue / changed files / 既存テストを整理し、不足文脈があれば `AskUserQuestion` で確認する
 `design-handoff` | `assess-gaps` / `allocate` / `handoff generate` 相当を吸収し、manual exploration に残す項目を絞り、draft を作る
 `publish-handoff` | `handoff publish` / `handoff update` / `handoff add-findings` 相当を吸収し、GitHub QA Issue を正本として更新する
 

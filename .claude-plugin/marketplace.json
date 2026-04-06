@@ -11,13 +11,7 @@
     {
       "name": "shiftleft-qa",
       "source": "./",
-      "description": "PR の確認項目を allocation し、manual exploration だけを GitHub Issue に handoff する Claude Code Plugin。",
-      "skills": [
-        "capabilities",
-        "analyze-pr",
-        "design-handoff",
-        "publish-handoff"
-      ]
+      "description": "PR の確認項目を allocation し、manual exploration だけを GitHub Issue に handoff する Claude Code Plugin。"
     }
   ]
 }

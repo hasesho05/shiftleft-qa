@@ -48,3 +48,121 @@ export const EXPECTED_ARTIFACT_COUNT = 6;
 
 /** Minimum number of distinct allocation destinations populated. */
 export const MIN_DISTINCT_DESTINATIONS = 2;
+
+// ---------------------------------------------------------------------------
+// E2E handoff issue identification (used by handoff-lifecycle.test.ts)
+// ---------------------------------------------------------------------------
+
+/** Marker embedded as HTML comment in test-created issues for deterministic lookup. */
+export const E2E_ISSUE_MARKER = "shiftleft-qa-live-e2e";
+
+/** Title prefix for test-created handoff issues. */
+export const E2E_ISSUE_TITLE_PREFIX = `[${E2E_ISSUE_MARKER}]`;
+
+// ---------------------------------------------------------------------------
+// PR matrix for layer applicability testing (used by pr-matrix.test.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Layer applicability keys as used by the `assessLayerApplicability` output.
+ * These match the keys in `LAYER_APPLICABILITY_LAYERS`.
+ */
+export type LayerKey =
+  | "unit"
+  | "integration-service"
+  | "ui-e2e"
+  | "visual"
+  | "manual-exploration";
+
+export type CanonicalPRConfig = {
+  /** PR number in the sample repository. Must remain open and unmerged. */
+  readonly prNumber: number;
+  /** Human-readable label for test output. */
+  readonly label: string;
+  /** PR archetype. */
+  readonly type:
+    | "frontend-storybook"
+    | "frontend-playwright"
+    | "backend-only"
+    | "mixed-partial";
+  /** Minimum number of changed files. */
+  readonly minChangedFiles: number;
+  /** Layers expected to be "primary" or "secondary". */
+  readonly expectedPrimaryLayers: readonly LayerKey[];
+  /** Layers expected to be "not-primary" or "no-product-change". */
+  readonly expectedNotPrimaryLayers: readonly LayerKey[];
+  /** Whether stability notes are expected in the handoff output. */
+  readonly expectStabilityNotes: boolean;
+  /** Whether structured intent context is expected. */
+  readonly expectIntentContext: boolean;
+};
+
+/**
+ * PR matrix — each entry represents a canonical PR with a distinct test asset
+ * combination. All PRs must remain open (unmerged) in the sample repository.
+ *
+ * PR #3: Frontend component + Storybook + Vitest (no Playwright)
+ * PR #4: Frontend route + Playwright + Vitest (no Storybook)
+ * PR #5: Backend-only (Go domain + usecase with Go tests)
+ * PR #6: Mixed frontend + backend with partial test assets (Vitest only)
+ */
+/**
+ * Layer applicability expectations below are derived from running the full
+ * pipeline against each canonical PR and recording the actual output.
+ *
+ * The key invariants being guarded are:
+ *   - PR #3 (Storybook): visual=primary because stories are changed
+ *   - PR #4 (Playwright): ui-e2e=primary because route + e2e spec are changed
+ *   - PR #5 (backend-only): ALL four auto-test layers are not-primary
+ *   - PR #6 (mixed): visual + ui-e2e = primary because frontend component is changed
+ *   - PR #3 vs #5: visual diverges (primary vs not-primary)
+ *   - PR #4 vs #3: ui-e2e diverges (primary vs secondary)
+ *   - PR #5 is the only case where ui-e2e AND visual are both not-primary
+ */
+export const PR_MATRIX: readonly CanonicalPRConfig[] = [
+  {
+    prNumber: 3,
+    label: "frontend-storybook",
+    type: "frontend-storybook",
+    minChangedFiles: 3,
+    expectedPrimaryLayers: ["unit", "visual"],
+    expectedNotPrimaryLayers: ["integration-service"],
+    expectStabilityNotes: false,
+    expectIntentContext: true,
+  },
+  {
+    prNumber: 4,
+    label: "frontend-playwright",
+    type: "frontend-playwright",
+    minChangedFiles: 4,
+    expectedPrimaryLayers: ["ui-e2e", "visual"],
+    expectedNotPrimaryLayers: ["unit", "integration-service"],
+    expectStabilityNotes: false,
+    expectIntentContext: true,
+  },
+  {
+    prNumber: 5,
+    label: "backend-only",
+    type: "backend-only",
+    minChangedFiles: 4,
+    expectedPrimaryLayers: [],
+    expectedNotPrimaryLayers: [
+      "unit",
+      "integration-service",
+      "ui-e2e",
+      "visual",
+    ],
+    expectStabilityNotes: false,
+    expectIntentContext: true,
+  },
+  {
+    prNumber: 6,
+    label: "mixed-partial",
+    type: "mixed-partial",
+    minChangedFiles: 5,
+    expectedPrimaryLayers: ["ui-e2e", "visual"],
+    expectedNotPrimaryLayers: ["integration-service"],
+    expectStabilityNotes: false,
+    expectIntentContext: true,
+  },
+];

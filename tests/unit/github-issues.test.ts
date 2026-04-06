@@ -4,6 +4,19 @@ vi.mock("execa", () => ({
   execa: vi.fn(),
 }));
 
+// Mock node:fs/promises for temp file operations
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const original = (await importOriginal()) as typeof import(
+    "node:fs/promises",
+  );
+  return {
+    ...original,
+    mkdtemp: vi.fn(async () => "/tmp/gh-issue-body-mock"),
+    writeFile: vi.fn(async () => undefined),
+    rm: vi.fn(async () => undefined),
+  };
+});
+
 import { execa } from "execa";
 
 import {
@@ -21,11 +34,7 @@ describe("createIssue", () => {
 
   it("calls gh issue create with correct args and parses output", async () => {
     execaMock.mockResolvedValue({
-      stdout: JSON.stringify({
-        number: 99,
-        url: "https://github.com/owner/repo/issues/99",
-        title: "QA: PR #42",
-      }),
+      stdout: "https://github.com/owner/repo/issues/99\n",
     });
 
     const result = await createIssue({
@@ -48,10 +57,7 @@ describe("createIssue", () => {
     expect(args).toContain("owner/repo");
     expect(args).toContain("--title");
     expect(args).toContain("QA: PR #42");
-    expect(args).toContain("--body");
-    expect(args).toContain("## Handoff\n\nTest body");
-    expect(args).toContain("--json");
-    expect(args).toContain("number,url,title");
+    expect(args).toContain("--body-file");
     expect(options.cwd).toBe("/workspace");
 
     expect(result.number).toBe(99);
@@ -61,11 +67,7 @@ describe("createIssue", () => {
 
   it("includes labels when provided", async () => {
     execaMock.mockResolvedValue({
-      stdout: JSON.stringify({
-        number: 100,
-        url: "https://github.com/owner/repo/issues/100",
-        title: "QA handoff",
-      }),
+      stdout: "https://github.com/owner/repo/issues/100\n",
     });
 
     await createIssue({
@@ -84,11 +86,7 @@ describe("createIssue", () => {
 
   it("includes assignees when provided", async () => {
     execaMock.mockResolvedValue({
-      stdout: JSON.stringify({
-        number: 101,
-        url: "https://github.com/owner/repo/issues/101",
-        title: "QA handoff",
-      }),
+      stdout: "https://github.com/owner/repo/issues/101\n",
     });
 
     await createIssue({
@@ -105,9 +103,9 @@ describe("createIssue", () => {
     expect(args).toContain("bob");
   });
 
-  it("throws on invalid gh output", async () => {
+  it("throws on URL that cannot be parsed for issue number", async () => {
     execaMock.mockResolvedValue({
-      stdout: JSON.stringify({ invalid: true }),
+      stdout: "not-a-url\n",
     });
 
     await expect(
@@ -117,7 +115,7 @@ describe("createIssue", () => {
         title: "QA handoff",
         body: "body",
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/Could not parse issue number/);
   });
 
   it("throws on gh command failure", async () => {
@@ -135,7 +133,7 @@ describe("createIssue", () => {
         title: "QA handoff",
         body: "body",
       }),
-    ).rejects.toThrow(/gh.*issue.*create/);
+    ).rejects.toThrow(/gh.*issue/);
   });
 });
 
@@ -166,8 +164,7 @@ describe("editIssueBody", () => {
     expect(args).toContain("99");
     expect(args).toContain("--repo");
     expect(args).toContain("owner/repo");
-    expect(args).toContain("--body");
-    expect(args).toContain("Updated body");
+    expect(args).toContain("--body-file");
     expect(options.cwd).toBe("/workspace");
   });
 
@@ -186,7 +183,7 @@ describe("editIssueBody", () => {
         issueNumber: 99,
         body: "body",
       }),
-    ).rejects.toThrow(/gh.*issue.*edit/);
+    ).rejects.toThrow(/gh.*issue/);
   });
 });
 
@@ -196,7 +193,6 @@ describe("addIssueComment", () => {
   });
 
   it("calls gh issue comment with correct args and parses plain-text URL output", async () => {
-    // gh issue comment outputs a plain-text URL, not JSON
     execaMock.mockResolvedValue({
       stdout: "https://github.com/owner/repo/issues/99#issuecomment-789\n",
     });
@@ -220,8 +216,7 @@ describe("addIssueComment", () => {
     expect(args).toContain("99");
     expect(args).toContain("--repo");
     expect(args).toContain("owner/repo");
-    expect(args).toContain("--body");
-    expect(args).toContain("Findings comment");
+    expect(args).toContain("--body-file");
     expect(options.cwd).toBe("/workspace");
 
     expect(result.url).toBe(
@@ -259,6 +254,6 @@ describe("addIssueComment", () => {
         issueNumber: 99,
         body: "body",
       }),
-    ).rejects.toThrow(/gh.*issue.*comment/);
+    ).rejects.toThrow(/gh.*issue/);
   });
 });

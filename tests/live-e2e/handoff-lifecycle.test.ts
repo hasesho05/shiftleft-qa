@@ -1,13 +1,14 @@
 /**
  * Live E2E test: handoff publish/update lifecycle.
  *
- * Validates that the final GitHub QA handoff Issue is actually created
- * and updated via the `handoff publish` and `handoff update` CLI commands.
+ * Validates that the 3-skill public flow produces a GitHub QA handoff Issue
+ * and can update it via `publish-handoff`.
+ *
+ * Pipeline: analyze-pr → design-handoff → publish-handoff
  *
  * Key design decisions:
  *   - Every run creates a NEW issue with a unique timestamp in the title.
- *     This guarantees that the `handoff publish` (create) path is always
- *     exercised, not just the update path.
+ *     This guarantees that the publish (create) path is always exercised.
  *   - afterAll closes the issue to prevent accumulation in the sample repo.
  *
  * Prerequisites:
@@ -32,19 +33,6 @@ import {
   runCli,
   runCliExpectError,
 } from "./helpers";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const PR_ARGS = [
-  "--pr",
-  String(CANONICAL_PR_NUMBER),
-  "--provider",
-  "github",
-  "--repository",
-  CANONICAL_REPO,
-] as const;
 
 // ---------------------------------------------------------------------------
 // GitHub API helpers
@@ -98,7 +86,6 @@ describe.skipIf(!ghAuthAvailable)(
   { timeout: 240_000 },
   () => {
     let workspaceRoot = "";
-    let riskAssessmentId = 0;
     let issueNumber = 0;
     let publishedIssueUrl = "";
     let initialBody = "";
@@ -109,20 +96,16 @@ describe.skipIf(!ghAuthAvailable)(
         "shiftleft-qa-handoff-e2e-",
       );
 
-      // 2. Run pipeline through allocate
-      await runCli(["setup"], workspaceRoot);
-      await runCli(["pr-intake", ...PR_ARGS.slice(0, 2)], workspaceRoot);
-      await runCli(["discover-context", ...PR_ARGS], workspaceRoot);
-      await runCli(["map-tests", ...PR_ARGS], workspaceRoot);
-
-      const assessGaps = await runCli(
-        ["assess-gaps", ...PR_ARGS],
-        workspaceRoot,
-      );
-      riskAssessmentId = assessGaps.riskAssessmentId as number;
+      // 2. Run 3-skill public flow: analyze-pr → design-handoff → publish-handoff
+      await runCli(["db", "init"], workspaceRoot);
 
       await runCli(
-        ["allocate run", "--risk-assessment-id", String(riskAssessmentId)],
+        ["analyze-pr", "--pr", String(CANONICAL_PR_NUMBER)],
+        workspaceRoot,
+      );
+
+      await runCli(
+        ["design-handoff", "--pr", String(CANONICAL_PR_NUMBER)],
         workspaceRoot,
       );
 
@@ -131,9 +114,9 @@ describe.skipIf(!ghAuthAvailable)(
       const title = `${E2E_ISSUE_TITLE_PREFIX} QA Handoff — PR #${CANONICAL_PR_NUMBER} (run ${runId})`;
       const publishResult = await runCli(
         [
-          "handoff publish",
-          "--risk-assessment-id",
-          String(riskAssessmentId),
+          "publish-handoff",
+          "--pr",
+          String(CANONICAL_PR_NUMBER),
           "--title",
           title,
         ],
@@ -204,17 +187,17 @@ describe.skipIf(!ghAuthAvailable)(
     });
 
     // -----------------------------------------------------------------
-    // HANDOFF-4: update preserves issue number and refreshes body
+    // HANDOFF-4: publish-handoff update preserves issue number
     // -----------------------------------------------------------------
-    it("HANDOFF-4: handoff update preserves issue number", async () => {
+    it("HANDOFF-4: publish-handoff update preserves issue number", async () => {
       // Small delay so the "Generated" timestamp differs
       await new Promise((resolve) => setTimeout(resolve, 1_500));
 
       const updateResult = await runCli(
         [
-          "handoff update",
-          "--risk-assessment-id",
-          String(riskAssessmentId),
+          "publish-handoff",
+          "--pr",
+          String(CANONICAL_PR_NUMBER),
           "--issue-number",
           String(issueNumber),
         ],
@@ -222,7 +205,7 @@ describe.skipIf(!ghAuthAvailable)(
       );
 
       expect(updateResult.issueNumber).toBe(issueNumber);
-      expect(updateResult.updated).toBe(true);
+      expect(updateResult.action).toBe("updated");
 
       // Verify the body was actually updated (timestamp changed)
       const updatedBody = await fetchIssueBody(CANONICAL_REPO, issueNumber);
@@ -233,15 +216,9 @@ describe.skipIf(!ghAuthAvailable)(
     // -----------------------------------------------------------------
     // HANDOFF-5: error case returns machine-readable error
     // -----------------------------------------------------------------
-    it("HANDOFF-5: update with non-existent issue returns error", async () => {
+    it("HANDOFF-5: publish-handoff with non-existent PR returns error", async () => {
       const envelope = await runCliExpectError(
-        [
-          "handoff update",
-          "--risk-assessment-id",
-          String(riskAssessmentId),
-          "--issue-number",
-          "999999",
-        ],
+        ["publish-handoff", "--pr", "999999"],
         workspaceRoot,
       );
 

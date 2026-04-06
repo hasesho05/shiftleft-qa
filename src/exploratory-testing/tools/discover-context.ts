@@ -47,7 +47,7 @@ export async function runDiscoverContext(
 
   if (!prIntake) {
     throw new Error(
-      `PR intake not found for ${input.provider}/${input.repository}#${input.prNumber}. Run pr-intake first.`,
+      `PR intake not found for ${input.provider}/${input.repository}#${input.prNumber}. Run analyze-pr first.`,
     );
   }
 

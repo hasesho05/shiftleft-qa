@@ -43,7 +43,7 @@ export async function runAssessGaps(
 
   if (!prIntake) {
     throw new Error(
-      `PR intake not found for ${input.provider}/${input.repository}#${input.prNumber}. Run pr-intake first.`,
+      `PR intake not found for ${input.provider}/${input.repository}#${input.prNumber}. Run analyze-pr first.`,
     );
   }
 
@@ -51,7 +51,7 @@ export async function runAssessGaps(
 
   if (!changeAnalysis) {
     throw new Error(
-      `Change analysis not found for pr_intake_id=${prIntake.id}. Run discover-context first.`,
+      `Change analysis not found for pr_intake_id=${prIntake.id}. Run analyze-pr first.`,
     );
   }
 
@@ -59,7 +59,7 @@ export async function runAssessGaps(
 
   if (!testMapping) {
     throw new Error(
-      `Test mapping not found for change_analysis_id=${changeAnalysis.id}. Run map-tests first.`,
+      `Test mapping not found for change_analysis_id=${changeAnalysis.id}. Run analyze-pr first.`,
     );
   }
 

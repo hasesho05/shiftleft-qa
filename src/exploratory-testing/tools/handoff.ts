@@ -577,7 +577,7 @@ async function resolveHandoffContext(
 
   if (!riskAssessment) {
     throw new Error(
-      `Risk assessment not found for id=${input.riskAssessmentId}. Run assess-gaps first.`,
+      `Risk assessment not found for id=${input.riskAssessmentId}. Run analyze-pr and design-handoff first.`,
     );
   }
 

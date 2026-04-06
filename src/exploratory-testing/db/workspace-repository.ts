@@ -50,9 +50,6 @@ export type WorkspaceStateRecord = {
   readonly configPath: string;
   readonly repositoryRoot: string;
   readonly databasePath: string;
-  readonly progressDirectory: string;
-  readonly progressSummaryPath: string;
-  readonly artifactsDirectory: string;
   readonly scmProvider: string;
   readonly defaultLanguage: string;
 };
@@ -118,34 +115,25 @@ export function saveWorkspaceState(
           config_path,
           repository_root,
           database_path,
-          progress_directory,
-          progress_summary_path,
-          artifacts_directory,
           scm_provider,
           default_language,
           initialized_at,
           updated_at
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
         ON CONFLICT(id) DO UPDATE SET
           config_path = excluded.config_path,
           repository_root = excluded.repository_root,
           database_path = excluded.database_path,
-          progress_directory = excluded.progress_directory,
-          progress_summary_path = excluded.progress_summary_path,
-          artifacts_directory = excluded.artifacts_directory,
           scm_provider = excluded.scm_provider,
           default_language = excluded.default_language,
           updated_at = excluded.updated_at
-        `,
+`,
       )
       .run(
         1,
         record.configPath,
         record.repositoryRoot,
         record.databasePath,
-        record.progressDirectory,
-        record.progressSummaryPath,
-        record.artifactsDirectory,
         record.scmProvider,
         record.defaultLanguage,
         timestamp,
@@ -1169,7 +1157,7 @@ function requireRiskAssessment(
 
   if (!riskAssessment) {
     throw new Error(
-      `Risk assessment not found for id=${riskAssessmentId}. Run assess-gaps first.`,
+      `Risk assessment not found for id=${riskAssessmentId}. Run analyze-pr and design-handoff first.`,
     );
   }
 

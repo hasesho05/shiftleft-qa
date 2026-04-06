@@ -4,10 +4,7 @@
   "scmProvider": "auto",
   "defaultLanguage": "ja",
   "paths": {
-    "database": "exploratory-testing.db",
-    "progressDirectory": ".exploratory-testing/progress",
-    "progressSummary": ".exploratory-testing/progress/progress-summary.md",
-    "artifactsDirectory": "output"
+    "database": "exploratory-testing.db"
   },
   "publishDefaults": {
     "repository": "owner/repo",

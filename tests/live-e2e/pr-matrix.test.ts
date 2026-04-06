@@ -5,6 +5,9 @@
  * verify that layer applicability, handoff wording, and manual exploration
  * scope vary correctly by PR type.
  *
+ * Pipeline: analyze-pr → design-handoff (then generate handoff markdown
+ * directly to inspect section content without publishing to GitHub).
+ *
  * PR matrix:
  *   - PR #3: Frontend component + Storybook + Vitest (no Playwright)
  *   - PR #4: Frontend route + Playwright + Vitest (no Storybook)
@@ -20,6 +23,10 @@
  * NOT included in `bun run check` or `bun run test`.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { findLatestRiskAssessmentByPr } from "../../src/exploratory-testing/db/workspace-repository";
+import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
+import { generateHandoffMarkdown } from "../../src/exploratory-testing/tools/handoff";
 
 import {
   CANONICAL_REPO,
@@ -40,13 +47,12 @@ import {
 
 type MatrixPipelineResult = {
   readonly workspaceRoot: string;
-  readonly prIntake: Record<string, unknown>;
-  readonly riskAssessmentId: number;
+  readonly analyzePr: Record<string, unknown>;
   readonly handoffMarkdown: string;
 };
 
 // ---------------------------------------------------------------------------
-// Pipeline runner (setup → allocate → handoff generate)
+// Pipeline runner (analyze-pr → design-handoff → generate markdown)
 // ---------------------------------------------------------------------------
 
 async function runMatrixPipeline(
@@ -56,43 +62,44 @@ async function runMatrixPipeline(
     `shiftleft-qa-matrix-pr${prNumber}-`,
   );
 
-  const prArgs = [
-    "--pr",
-    String(prNumber),
-    "--provider",
+  await runCli(["db", "init"], workspaceRoot);
+
+  // Run public flow: analyze-pr → design-handoff
+  const analyzePr = await runCli(
+    ["analyze-pr", "--pr", String(prNumber)],
+    workspaceRoot,
+  );
+
+  await runCli(["design-handoff", "--pr", String(prNumber)], workspaceRoot);
+
+  // Generate handoff markdown directly (design-handoff CLI doesn't return
+  // the full markdown — it returns structured counts. We call the tool
+  // function to get the markdown for section assertions.)
+  const configPath = `${workspaceRoot}/config.json`;
+  const manifestPath = `${workspaceRoot}/.claude-plugin/plugin.json`;
+  const config = await readPluginConfig(configPath, manifestPath);
+
+  const riskAssessment = findLatestRiskAssessmentByPr(
+    config.paths.database,
     "github",
-    "--repository",
     CANONICAL_REPO,
-  ] as const;
-
-  await runCli(["setup"], workspaceRoot);
-
-  const prIntake = await runCli(
-    ["pr-intake", "--pr", String(prNumber)],
-    workspaceRoot,
+    prNumber,
   );
 
-  await runCli(["discover-context", ...prArgs], workspaceRoot);
-  await runCli(["map-tests", ...prArgs], workspaceRoot);
+  if (!riskAssessment) {
+    throw new Error(`No risk assessment found for PR #${prNumber}`);
+  }
 
-  const assessGaps = await runCli(["assess-gaps", ...prArgs], workspaceRoot);
-  const riskAssessmentId = assessGaps.riskAssessmentId as number;
-
-  await runCli(
-    ["allocate run", "--risk-assessment-id", String(riskAssessmentId)],
-    workspaceRoot,
-  );
-
-  const handoffGenerate = await runCli(
-    ["handoff generate", "--risk-assessment-id", String(riskAssessmentId)],
-    workspaceRoot,
-  );
+  const handoff = await generateHandoffMarkdown({
+    riskAssessmentId: riskAssessment.id,
+    configPath,
+    manifestPath,
+  });
 
   return {
     workspaceRoot,
-    prIntake,
-    riskAssessmentId,
-    handoffMarkdown: handoffGenerate.markdown as string,
+    analyzePr,
+    handoffMarkdown: handoff.markdown,
   };
 }
 
@@ -172,16 +179,20 @@ function describePR(pr: CanonicalPRConfig): void {
     });
 
     // ---------------------------------------------------------------
-    // MATRIX-1: pr-intake captures metadata
+    // MATRIX-1: analyze-pr captures metadata
     // ---------------------------------------------------------------
-    it("MATRIX-1: pr-intake captures changed files and intent context", () => {
-      expect(result.prIntake.prNumber).toBe(pr.prNumber);
-      expect(result.prIntake.changedFiles as number).toBeGreaterThanOrEqual(
-        pr.minChangedFiles,
-      );
+    it("MATRIX-1: analyze-pr captures changed files and intent context", () => {
+      expect(result.analyzePr.prNumber).toBe(pr.prNumber);
+      const changedFiles = result.analyzePr.changedFiles as {
+        total: number;
+      };
+      expect(changedFiles.total).toBeGreaterThanOrEqual(pr.minChangedFiles);
 
       if (pr.expectIntentContext) {
-        const intent = result.prIntake.intentContext as Record<string, unknown>;
+        const intent = result.analyzePr.intentContext as Record<
+          string,
+          unknown
+        >;
         expect(intent).not.toBeNull();
         expect(intent.extractionStatus).not.toBe("empty");
       }
@@ -220,9 +231,6 @@ function describePR(pr: CanonicalPRConfig): void {
       if (pr.expectStabilityNotes) {
         expect(hasStabilityNotes).toBe(true);
       }
-      // When not expected, we don't assert absence because stability notes
-      // may still appear from heuristic matching — we only assert presence
-      // when expected.
     });
 
     // ---------------------------------------------------------------

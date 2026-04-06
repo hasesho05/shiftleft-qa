@@ -28,28 +28,6 @@ export const CANONICAL_REPO_URL = `https://github.com/${CANONICAL_REPO}.git`;
 export const CANONICAL_PR_NUMBER = 2;
 
 // ---------------------------------------------------------------------------
-// Minimum invariant thresholds (conservative lower bounds)
-// ---------------------------------------------------------------------------
-
-/** Minimum number of changed files the PR should report. */
-export const MIN_CHANGED_FILES = 8;
-
-/** Minimum number of distinct change categories across all files. */
-export const MIN_CATEGORIES = 4;
-
-/** Minimum number of viewpoint groups that have at least one seed. */
-export const MIN_VIEWPOINTS_WITH_SEEDS = 2;
-
-/** Minimum number of distinct frameworks selected by assess-gaps. */
-export const MIN_FRAMEWORKS = 2;
-
-/** Number of artifact files exported (exploration-brief, coverage-gap-map, etc.). */
-export const EXPECTED_ARTIFACT_COUNT = 6;
-
-/** Minimum number of distinct allocation destinations populated. */
-export const MIN_DISTINCT_DESTINATIONS = 2;
-
-// ---------------------------------------------------------------------------
 // E2E handoff issue identification (used by handoff-lifecycle.test.ts)
 // ---------------------------------------------------------------------------
 

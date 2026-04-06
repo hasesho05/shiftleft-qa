@@ -20,8 +20,6 @@ export const pluginManifestSchema = schema(
     state: v.object({
       config: nonEmptyString(),
       database: nonEmptyString(),
-      progressDirectory: nonEmptyString(),
-      artifactsDirectory: nonEmptyString(),
     }),
     skills: v.pipe(v.array(skillManifestSchema), v.minLength(1)),
   }),

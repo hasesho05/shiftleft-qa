@@ -61,24 +61,24 @@ export async function runAnalyzePr(
   const manifestPath = input.manifestPath ?? ".claude-plugin/plugin.json";
   const config = await readPluginConfig(configPath, manifestPath);
 
-  // Step 1: PR intake
+  // PR intake
   const intake = await runPrIntake({
     prNumber: input.prNumber,
     configPath,
     manifestPath,
   });
 
-  // Step 2: Discover context
+  // Discover context
   const context = await runDiscoverContextFromIntake(intake.persisted, config);
 
-  // Step 3: Map tests
+  // Map tests
   const mapping = await runMapTestsFromAnalysis(
     context.persisted,
     intake.persisted,
     config,
   );
 
-  // Step 4: Assess gaps
+  // Assess gaps
   const gaps = await runAssessGapsFromMapping(
     mapping.persisted,
     context.persisted,

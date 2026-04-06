@@ -8,9 +8,7 @@
   },
   "state": {
     "config": "config.json",
-    "database": "exploratory-testing.db",
-    "progressDirectory": ".exploratory-testing/progress",
-    "artifactsDirectory": "output"
+    "database": "exploratory-testing.db"
   },
   "skills": [
     {

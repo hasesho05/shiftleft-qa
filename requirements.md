@@ -364,46 +364,42 @@ config.json を使うこと
 database
 ローカル DB を使うこと
 第一候補は SQLite
-progress files
-各 step の結果を markdown または json で保存すること
+local cache
+分析結果は local DB に保存し、resume に使えるようにすること
 CLI bridge
 DB 直接操作ではなく CLI を経由すること
 入出力は JSON を基本とすること
 Skill / CLI に期待する役割分担
 Skill
-ワークフロー制御
-config / progress の読み書き
+ワークフロー制御（analyze-pr → design-handoff → publish-handoff）
 CLI 呼び出し
 結果要約
-次ステップへの handover
+次 skill への確認（AskUserQuestion）
 CLI
 PR / MR 取得
 diff 解析
 changed files 整理
 test mapping
 risk analysis
-charter material generation
-finding persistence
-report generation
+allocation / handoff markdown generation
+GitHub Issue publish
 出力物要件
 
 最低限、以下を出力できるようにすること。
 
-1. Exploration Brief
+1. QA Handoff Issue（GitHub Issue として publish）
+PR 要約・intent context
+layer applicability
+Already Covered / Should Automate / Manual Exploration Required の切り分け
+manual exploration テーマ・rationale・risk level・confidence
+2. Analysis Summary（analyze-pr の JSON 出力）
 変更概要
 5つの着眼点の整理
 高リスク領域
-変更影響範囲
-2. Coverage Gap Map
-自動テストで保証済み
-未保証
-手動探索優先領域
-3. Session Charters
-実行可能な探索計画
-4. Findings Report
-発見事項の整理
-5. Automation Candidate Report
-どの自動テスト層に落とすべきか
+coverage gap entries
+3. Handoff Draft（design-handoff の JSON 出力）
+allocation counts / destination summary
+manual exploration 項目の詳細
 品質要求
 
 この Plugin は、以下を満たす品質であること。

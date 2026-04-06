@@ -169,9 +169,14 @@ export async function findIssueBySearch(
 
 async function writeBodyToTempFile(body: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "gh-issue-body-"));
-  const filePath = join(dir, "body.md");
-  await writeFile(filePath, body, "utf8");
-  return filePath;
+  try {
+    const filePath = join(dir, "body.md");
+    await writeFile(filePath, body, "utf8");
+    return filePath;
+  } catch (error) {
+    await rm(dir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 async function cleanupTempFile(filePath: string): Promise<void> {

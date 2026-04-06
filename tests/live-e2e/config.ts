@@ -146,7 +146,12 @@ export const PR_MATRIX: readonly CanonicalPRConfig[] = [
     type: "backend-only",
     minChangedFiles: 4,
     expectedPrimaryLayers: [],
-    expectedNotPrimaryLayers: ["unit", "integration-service", "ui-e2e", "visual"],
+    expectedNotPrimaryLayers: [
+      "unit",
+      "integration-service",
+      "ui-e2e",
+      "visual",
+    ],
     expectStabilityNotes: false,
     expectIntentContext: true,
   },

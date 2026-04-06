@@ -56,8 +56,7 @@ export const PLUGIN_MANIFEST = {
     {
       name: "assess-gaps",
       path: "skills/assess-gaps/SKILL.md",
-      description:
-        "Identify coverage gaps and select exploratory heuristics.",
+      description: "Identify coverage gaps and select exploratory heuristics.",
     },
     {
       name: "allocate",
@@ -72,8 +71,7 @@ export const PLUGIN_MANIFEST = {
     {
       name: "generate-charters",
       path: "skills/generate-charters/SKILL.md",
-      description:
-        "Generate short, executable exploratory session charters.",
+      description: "Generate short, executable exploratory session charters.",
     },
     {
       name: "run-session",
@@ -89,8 +87,7 @@ export const PLUGIN_MANIFEST = {
     {
       name: "export-artifacts",
       path: "skills/export-artifacts/SKILL.md",
-      description:
-        "Export the brief, gap map, charters, and findings reports.",
+      description: "Export the brief, gap map, charters, and findings reports.",
     },
   ],
 } as const;

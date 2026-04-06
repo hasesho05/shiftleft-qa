@@ -6,8 +6,9 @@ vi.mock("execa", () => ({
 
 // Mock node:fs/promises for temp file operations
 vi.mock("node:fs/promises", async (importOriginal) => {
-  const original =
-    (await importOriginal()) as typeof import("node:fs/promises");
+  const original = (await importOriginal()) as typeof import(
+    "node:fs/promises",
+  );
   return {
     ...original,
     mkdtemp: vi.fn(async () => "/tmp/gh-issue-body-mock"),

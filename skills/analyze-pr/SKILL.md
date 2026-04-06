@@ -22,21 +22,28 @@ PR を読んで、次の handoff 設計に必要な事実をまとめる。
 - ユーザーには内部 step 名ではなく、「PR と既存テストを理解する skill」として見せる。
 - local DB は resumable cache として使い、user-facing の主語にしない。
 - 先に CLI / GitHub / diff / issue から取れる事実を集め、それでも不足する文脈だけを `AskUserQuestion` で確認する。
+- 対象 repository の root で実行するのが基本。別 cwd から実行する場合は `--repository-root <path>` を必ず付ける。
 
 ## 実行手順
 
-1. `bun run dev analyze-pr --pr <number>` を実行する。
+1. 対象 repository の root で CLI を実行する。plugin ディレクトリなど別 cwd なら `--repository-root <path>` を付ける。
+2. `bun run dev analyze-pr --pr <number>` を実行する。
    - 内部で PR 取得 → 変更分析 → テスト対応付け → リスク評価を順に実行し、結果を統合する。
+   - `config.json` と local DB がなければ自動初期化する。
    - 返却 JSON に internal ID は含まれない。
-2. 返却 JSON から intent context / changed files / test coverage / risk highlights / layer applicability を読み取る。
-3. 事実だけでは intent や acceptance criteria が足りない場合は、`AskUserQuestion` で不足文脈を確認する。
-4. 整理結果を要約する。
-5. `AskUserQuestion` で `design-handoff` に進んでよいか確認する。
+3. 返却 JSON から intent context / changed files / test coverage / risk highlights / layer applicability を読み取る。
+4. 事実だけでは intent や acceptance criteria が足りない場合は、`AskUserQuestion` で不足文脈を確認する。
+5. 整理結果を要約する。
+6. `AskUserQuestion` で `design-handoff` に進んでよいか確認する。
 
 CLI:
 
 ```bash
+# 対象 repository の root で実行する場合
 bun run dev analyze-pr --pr <number>
+
+# plugin ディレクトリなど別 cwd から実行する場合
+bun run dev analyze-pr --pr <number> --repository-root /path/to/target-repo
 ```
 
 ## 会話テンプレート

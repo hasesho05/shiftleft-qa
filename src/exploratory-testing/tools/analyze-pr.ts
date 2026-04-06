@@ -8,13 +8,14 @@ import type { IntentContext } from "../models/intent-context";
 import type { RiskAssessmentResult } from "../models/risk-assessment";
 import type { TestMappingResult } from "../models/test-mapping";
 import { runAssessGapsFromMapping } from "./assess-gaps";
-import { readPluginConfig } from "./config";
 import { runDiscoverContextFromIntake } from "./discover-context";
 import { runMapTestsFromAnalysis } from "./map-tests";
 import { runPrIntake } from "./pr-intake";
+import { initializeWorkspace } from "./setup";
 
 export type AnalyzePrInput = {
   readonly prNumber: number;
+  readonly repositoryRoot?: string;
   readonly configPath?: string;
   readonly manifestPath?: string;
 };
@@ -59,7 +60,10 @@ export async function runAnalyzePr(
 ): Promise<AnalyzePrResult> {
   const configPath = input.configPath ?? "config.json";
   const manifestPath = input.manifestPath ?? ".claude-plugin/plugin.json";
-  const config = await readPluginConfig(configPath, manifestPath);
+  const workspace = await initializeWorkspace(configPath, manifestPath, {
+    repositoryRoot: input.repositoryRoot,
+  });
+  const config = workspace.config;
 
   // PR intake
   const intake = await runPrIntake({

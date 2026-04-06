@@ -206,3 +206,43 @@ export function normalizeExecaErrorWithReason(
     message: normalizeExecaError(error, context, fallbackMessage),
   };
 }
+
+export function buildExternalCommandRecoveryHint(
+  error: unknown,
+  command: string,
+): string | null {
+  const reason = classifyExternalCommandError(error);
+  const preferredMessage = getPreferredErrorMessage(error)?.toLowerCase() ?? "";
+
+  if (
+    preferredMessage.includes("not a git repository") ||
+    preferredMessage.includes("fatal: not a git repository")
+  ) {
+    return "repositoryRoot が対象リポジトリを指しているか確認してください。必要なら `db init --repository-root <path>` で再初期化してください。";
+  }
+
+  switch (reason) {
+    case "command-not-found":
+      if (command === "gh") {
+        return "`gh` CLI が見つかりません。GitHub CLI をインストールしてから再実行してください。";
+      }
+      if (command === "glab") {
+        return "`glab` CLI が見つかりません。GitLab CLI をインストールしてから再実行してください。";
+      }
+      return `\`${command}\` コマンドが見つかりません。インストール状況を確認してください。`;
+    case "auth-failure":
+      if (command === "gh") {
+        return "`gh auth login` を実行するか、`GH_TOKEN` / `GITHUB_TOKEN` を設定してください。";
+      }
+      if (command === "glab") {
+        return "`glab auth login` を実行するか、必要なトークンを設定してください。";
+      }
+      return "認証情報を確認して再実行してください。";
+    case "network":
+      return "ネットワーク接続と Git ホスティングサービスへの疎通を確認して再実行してください。";
+    case "timeout":
+      return "時間をおいて再実行するか、ネットワーク状況とリポジトリの応答性を確認してください。";
+    case "unknown":
+      return null;
+  }
+}

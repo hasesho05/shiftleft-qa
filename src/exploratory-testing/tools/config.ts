@@ -15,12 +15,16 @@ export type EnsuredPluginConfig = {
   readonly created: boolean;
 };
 
+export type PluginConfigOverrides = {
+  readonly repositoryRoot?: string;
+};
+
 const DEFAULT_DATABASE_PATH = "exploratory-testing.db";
 
-export function createDefaultPluginConfig(): PluginConfig {
+export function createDefaultPluginConfig(repositoryRoot = "."): PluginConfig {
   return pluginConfigSchema.parse({
     version: 1,
-    repositoryRoot: ".",
+    repositoryRoot,
     scmProvider: "auto",
     defaultLanguage: "ja",
     paths: {
@@ -41,7 +45,7 @@ export async function readPluginConfig(
 
   if (!(await pathExists(absoluteConfigPath))) {
     throw new Error(
-      `config ファイルが見つかりません: ${absoluteConfigPath}。config.json を作成するか、bun run dev db init を実行してください。`,
+      `config ファイルが見つかりません: ${absoluteConfigPath}。config.json を作成するか、bun run dev db init --repository-root <path> を実行してください。`,
     );
   }
 
@@ -70,12 +74,13 @@ export async function writePluginConfig(
 export async function ensurePluginConfig(
   configPath = "config.json",
   manifestPath = ".claude-plugin/plugin.json",
+  overrides?: PluginConfigOverrides,
 ): Promise<EnsuredPluginConfig> {
   const absoluteConfigPath = resolve(configPath);
   await readPluginManifest(manifestPath);
 
   if (!(await pathExists(absoluteConfigPath))) {
-    const config = createDefaultPluginConfig();
+    const config = createDefaultPluginConfig(overrides?.repositoryRoot);
     await writePluginConfig(config, absoluteConfigPath);
 
     return {
@@ -87,7 +92,7 @@ export async function ensurePluginConfig(
 
   const contents = await readFile(absoluteConfigPath, "utf8");
   const rawConfig: unknown = JSON.parse(contents);
-  const config = normalizePluginConfig(rawConfig);
+  const config = normalizePluginConfig(rawConfig, overrides);
   await writePluginConfig(config, absoluteConfigPath);
 
   return {
@@ -121,13 +126,20 @@ export function resolvePluginConfig(
   };
 }
 
-function normalizePluginConfig(rawConfig: unknown): PluginConfig {
-  const defaults = createDefaultPluginConfig();
+function normalizePluginConfig(
+  rawConfig: unknown,
+  overrides?: PluginConfigOverrides,
+): PluginConfig {
+  const defaults = createDefaultPluginConfig(overrides?.repositoryRoot);
   const partialConfig = partialPluginConfigSchema.parse(rawConfig);
 
   return pluginConfigSchema.parse({
     ...defaults,
     ...partialConfig,
+    repositoryRoot:
+      overrides?.repositoryRoot ??
+      partialConfig.repositoryRoot ??
+      defaults.repositoryRoot,
     paths: {
       ...defaults.paths,
       ...partialConfig.paths,

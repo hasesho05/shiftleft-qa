@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  type NormalizedExternalCommandError,
+  buildExternalCommandRecoveryHint,
   normalizeExecaErrorWithReason,
 } from "../../src/exploratory-testing/lib/execa-error";
 
@@ -74,5 +74,25 @@ describe("normalizeExecaErrorWithReason", () => {
 
     expect(result.reason).toBe("timeout");
     expect(result.message).toContain("timed out");
+  });
+
+  it("builds actionable auth guidance for gh", () => {
+    const hint = buildExternalCommandRecoveryHint(
+      { exitCode: 4, stderr: "set the GH_TOKEN environment variable" },
+      "gh",
+    );
+
+    expect(hint).toContain("gh auth login");
+    expect(hint).toContain("GH_TOKEN");
+  });
+
+  it("builds repositoryRoot guidance for non-git directories", () => {
+    const hint = buildExternalCommandRecoveryHint(
+      { exitCode: 1, stderr: "fatal: not a git repository" },
+      "gh",
+    );
+
+    expect(hint).toContain("repositoryRoot");
+    expect(hint).toContain("db init --repository-root");
   });
 });

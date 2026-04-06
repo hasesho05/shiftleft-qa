@@ -4,14 +4,15 @@ import {
 } from "../db/workspace-repository";
 import type { AllocationDestinationCounts } from "../models/allocation";
 import { runAllocate } from "./allocate";
-import { readPluginConfig } from "./config";
 import type { HandoffSections, HandoffSummary } from "./handoff";
 import { generateHandoffMarkdown } from "./handoff";
+import { initializeWorkspace } from "./setup";
 
 export type DesignHandoffInput = {
   readonly prNumber: number;
   readonly provider?: string;
   readonly repository?: string;
+  readonly repositoryRoot?: string;
   readonly configPath?: string;
   readonly manifestPath?: string;
 };
@@ -45,7 +46,10 @@ export async function runDesignHandoff(
 ): Promise<DesignHandoffResult> {
   const configPath = input.configPath ?? "config.json";
   const manifestPath = input.manifestPath ?? ".claude-plugin/plugin.json";
-  const config = await readPluginConfig(configPath, manifestPath);
+  const workspace = await initializeWorkspace(configPath, manifestPath, {
+    repositoryRoot: input.repositoryRoot,
+  });
+  const config = workspace.config;
 
   const { provider, repository } = resolveProviderRepository(
     config.paths.database,

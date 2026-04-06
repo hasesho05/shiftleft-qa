@@ -1,6 +1,9 @@
 import { execa } from "execa";
 
-import { normalizeExecaError } from "../lib/execa-error";
+import {
+  buildExternalCommandRecoveryHint,
+  normalizeExecaError,
+} from "../lib/execa-error";
 import type { PrMetadata } from "../models/pr-intake";
 import {
   buildPrMetadata,
@@ -104,13 +107,14 @@ async function runGhCommand(
       preferLocal: false,
     });
   } catch (error) {
-    throw new Error(
-      normalizeGhCommandError(error, {
-        args,
-        cwd,
-        timeoutMs: EXTERNAL_COMMAND_TIMEOUT_MS,
-      }),
-    );
+    const message = normalizeGhCommandError(error, {
+      args,
+      cwd,
+      timeoutMs: EXTERNAL_COMMAND_TIMEOUT_MS,
+    });
+    const hint = buildExternalCommandRecoveryHint(error, "gh");
+
+    throw new Error(hint ? `${message} ${hint}` : message);
   }
 }
 

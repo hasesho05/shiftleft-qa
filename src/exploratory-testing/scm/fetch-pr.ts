@@ -1,6 +1,9 @@
 import { execa } from "execa";
 
-import { normalizeExecaError } from "../lib/execa-error";
+import {
+  buildExternalCommandRecoveryHint,
+  normalizeExecaError,
+} from "../lib/execa-error";
 import type { PrMetadata } from "../models/pr-intake";
 import type { ResolvedScmProvider } from "./detect-provider";
 import { resolveScmProvider } from "./detect-provider";
@@ -64,14 +67,15 @@ async function runExternalCommand(
 
     return result.stdout.trim();
   } catch (error) {
-    throw new Error(
-      normalizeExternalCommandError(error, {
-        command,
-        args,
-        cwd,
-        timeoutMs: EXTERNAL_COMMAND_TIMEOUT_MS,
-      }),
-    );
+    const message = normalizeExternalCommandError(error, {
+      command,
+      args,
+      cwd,
+      timeoutMs: EXTERNAL_COMMAND_TIMEOUT_MS,
+    });
+    const hint = buildExternalCommandRecoveryHint(error, command);
+
+    throw new Error(hint ? `${message} ${hint}` : message);
   }
 }
 

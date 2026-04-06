@@ -19,6 +19,7 @@ import { initializeDatabaseFromConfig } from "../tools/setup";
 type WorkspaceCommandOptions = {
   readonly config?: string;
   readonly manifest?: string;
+  readonly repositoryRoot?: string;
 };
 
 type PrIntakeCommandOptions = WorkspaceCommandOptions & {
@@ -144,11 +145,18 @@ cli
   .command("db init", "SQLite ワークスペース DB を初期化する")
   .option("--config <configPath>", "config.json のパス")
   .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--repository-root <repositoryRoot>",
+    "対象リポジトリのルートパス (config がない場合や更新したい場合)",
+  )
   .action(
     createEnvelopeAction(async (options: WorkspaceCommandOptions) => {
       const result = await initializeDatabaseFromConfig(
         options.config,
         options.manifest,
+        {
+          repositoryRoot: options.repositoryRoot,
+        },
       );
 
       return {
@@ -288,6 +296,10 @@ cli
   )
   .option("--config <configPath>", "config.json のパス")
   .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--repository-root <repositoryRoot>",
+    "対象リポジトリのルートパス (config がない場合や上書きしたい場合)",
+  )
   .option("--pr <prNumber>", "PR または MR 番号")
   .action(
     createEnvelopeAction(async (options: PrIntakeCommandOptions) => {
@@ -297,6 +309,7 @@ cli
 
       const result = await runAnalyzePr({
         prNumber: options.pr,
+        repositoryRoot: options.repositoryRoot,
         configPath: options.config,
         manifestPath: options.manifest,
       });
@@ -312,6 +325,10 @@ cli
   )
   .option("--config <configPath>", "config.json のパス")
   .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--repository-root <repositoryRoot>",
+    "対象リポジトリのルートパス (config がない場合や上書きしたい場合)",
+  )
   .option("--pr <prNumber>", "PR または MR 番号")
   .option("--provider <provider>", "SCM プロバイダ (省略時は DB から解決)")
   .option("--repository <repository>", "リポジトリ (省略時は DB から解決)")
@@ -326,6 +343,7 @@ cli
         prNumber: options.pr,
         provider: options.provider,
         repository: options.repository,
+        repositoryRoot: options.repositoryRoot,
         configPath: options.config,
         manifestPath: options.manifest,
       });
@@ -354,6 +372,10 @@ cli
   )
   .option("--config <configPath>", "config.json のパス")
   .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option(
+    "--repository-root <repositoryRoot>",
+    "対象リポジトリのルートパス (config がない場合や上書きしたい場合)",
+  )
   .option("--pr <prNumber>", "PR または MR 番号")
   .option("--provider <provider>", "SCM プロバイダ (省略時は DB から解決)")
   .option("--repository <repository>", "リポジトリ (省略時は DB から解決)")
@@ -378,6 +400,7 @@ cli
         title: options.title,
         labels: normalizeArrayOption(options.label),
         assignees: normalizeArrayOption(options.assignee),
+        repositoryRoot: options.repositoryRoot,
         configPath: options.config,
         manifestPath: options.manifest,
       });

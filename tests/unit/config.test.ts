@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -37,6 +38,29 @@ describe("plugin config", () => {
     expect(resolved.publishDefaults.mode).toBe("create-or-update");
     expect(resolved.publishDefaults.repository).toBeUndefined();
     expect(resolved.publishDefaults.titlePrefix).toBeUndefined();
+  });
+
+  it("applies repositoryRoot override when creating config", async () => {
+    const workspace = await registerWorkspace();
+    const repositoryRoot = `${workspace.root}/../target-repo`;
+    const resolvedDatabasePath = resolve(
+      repositoryRoot,
+      "exploratory-testing.db",
+    );
+
+    const ensured = await ensurePluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+      { repositoryRoot },
+    );
+    const resolved = await readPluginConfig(
+      workspace.configPath,
+      workspace.manifestPath,
+    );
+
+    expect(ensured.rawConfig.repositoryRoot).toBe(repositoryRoot);
+    expect(resolved.workspaceRoot).toBe(repositoryRoot);
+    expect(resolved.paths.database).toBe(resolvedDatabasePath);
   });
 });
 

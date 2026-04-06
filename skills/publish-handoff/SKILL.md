@@ -15,6 +15,7 @@ QA handoff を GitHub Issue として publish / update し、shared source of tr
 - local DB は補助的な cache / resume layer として扱う。
 - 既存 issue を更新するか、新規 issue を作るかは user-facing には 1 つの handoff lifecycle として扱う。
 - `config.json` の `publishDefaults` があれば publish の既定値として使う。
+- 対象 repository の root で実行するのが基本。別 cwd から実行する場合は `--repository-root <path>` を必ず付ける。
 - publish 前に必要なら title / target issue / scope を `AskUserQuestion` で確認してよい。
 - 質問は、config と draft から埋まらない項目だけに絞り、`AskUserQuestion` を使う。
 - この「不足項目を `AskUserQuestion` で確認する」振る舞いは skill contract の責務であり、CLI 単体の実装はまだ追従途中である。
@@ -22,20 +23,27 @@ QA handoff を GitHub Issue として publish / update し、shared source of tr
 ## 実行手順
 
 1. publish 前に title / target issue / scope が不明なら、`AskUserQuestion` で確認する。
-2. `bun run dev publish-handoff --pr <number>` を実行する。
+2. 対象 repository の root で CLI を実行する。plugin ディレクトリなど別 cwd なら `--repository-root <path>` を付ける。
+3. `bun run dev publish-handoff --pr <number>` を実行する。
    - 内部で前段の analysis/allocation 結果を PR 番号から自動解決し、GitHub Issue を create or update する。
+   - `config.json` と local DB がなければ自動初期化する。
    - `config.json` の `publishDefaults` (repository, titlePrefix, labels, assignees, mode) が既定値として使われる。
    - CLI オプションで上書き可能: `--issue-number`, `--title`, `--label`, `--assignee`
-3. 完了後に issue URL を要約して返す。
+4. 完了後に issue URL を要約して返す。
 
 CLI:
 
 ```bash
 # 新規作成 (publishDefaults.mode = "create" or "create-or-update")
+# 対象 repository の root で実行する場合
 bun run dev publish-handoff --pr <number>
 
 # 既存 Issue 更新
 bun run dev publish-handoff --pr <number> --issue-number <number>
+
+# plugin ディレクトリなど別 cwd から実行する場合
+bun run dev publish-handoff --pr <number> --repository-root /path/to/target-repo
+bun run dev publish-handoff --pr <number> --issue-number <number> --repository-root /path/to/target-repo
 ```
 
 ## 会話テンプレート

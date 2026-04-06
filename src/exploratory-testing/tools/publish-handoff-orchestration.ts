@@ -3,8 +3,8 @@ import {
   listAllocationItems,
   resolvePrIdentity,
 } from "../db/workspace-repository";
-import { readPluginConfig } from "./config";
 import { runPublishHandoffLifecycle } from "./handoff";
+import { initializeWorkspace } from "./setup";
 
 export type PublishHandoffOrchestrationInput = {
   readonly prNumber: number;
@@ -14,6 +14,7 @@ export type PublishHandoffOrchestrationInput = {
   readonly title?: string;
   readonly labels?: readonly string[];
   readonly assignees?: readonly string[];
+  readonly repositoryRoot?: string;
   readonly configPath?: string;
   readonly manifestPath?: string;
 };
@@ -31,7 +32,10 @@ export async function runPublishHandoffOrchestration(
 ): Promise<PublishHandoffOrchestrationResult> {
   const configPath = input.configPath ?? "config.json";
   const manifestPath = input.manifestPath ?? ".claude-plugin/plugin.json";
-  const config = await readPluginConfig(configPath, manifestPath);
+  const workspace = await initializeWorkspace(configPath, manifestPath, {
+    repositoryRoot: input.repositoryRoot,
+  });
+  const config = workspace.config;
 
   const { provider, repository } = resolveProviderRepository(
     config.paths.database,

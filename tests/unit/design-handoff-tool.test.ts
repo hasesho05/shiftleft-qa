@@ -111,4 +111,17 @@ describe("runDesignHandoff", () => {
       }),
     ).rejects.toThrow(/No prior analysis found/);
   });
+
+  it("returns workflow error instead of sqlite table error on fresh workspace", async () => {
+    const workspace = await createTestWorkspace();
+    workspaces.push(workspace.root);
+
+    await expect(
+      runDesignHandoff({
+        prNumber: 999,
+        configPath: workspace.configPath,
+        manifestPath: workspace.manifestPath,
+      }),
+    ).rejects.toThrow(/No prior analysis found/);
+  });
 });

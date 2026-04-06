@@ -8,6 +8,7 @@ import {
 import type { ResolvedPluginConfig } from "../models/config";
 import {
   type EnsuredPluginConfig,
+  type PluginConfigOverrides,
   ensurePluginConfig,
   readPluginConfig,
 } from "./config";
@@ -25,8 +26,9 @@ export type WorkspaceSetupResult = DatabaseInitializationResult;
 export async function initializeDatabaseFromConfig(
   configPath = "config.json",
   manifestPath = ".claude-plugin/plugin.json",
+  overrides?: PluginConfigOverrides,
 ): Promise<DatabaseInitializationResult> {
-  const ensured = await ensurePluginConfig(configPath, manifestPath);
+  const ensured = await ensurePluginConfig(configPath, manifestPath, overrides);
   const result = await initializeDatabaseFromEnsuredConfig(ensured);
 
   return result;
@@ -35,8 +37,9 @@ export async function initializeDatabaseFromConfig(
 export async function initializeWorkspace(
   configPath = "config.json",
   manifestPath = ".claude-plugin/plugin.json",
+  overrides?: PluginConfigOverrides,
 ): Promise<WorkspaceSetupResult> {
-  const ensured = await ensurePluginConfig(configPath, manifestPath);
+  const ensured = await ensurePluginConfig(configPath, manifestPath, overrides);
   const database = await initializeDatabaseFromEnsuredConfig(ensured);
 
   return {

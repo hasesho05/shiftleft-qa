@@ -71,6 +71,12 @@ bun run check
 
 通常は Claude Code から 3 つの public skill を順に呼びます。
 
+前提:
+
+- plugin を対象アプリの repository root で使う
+- もし plugin ディレクトリや別 cwd から CLI を叩く場合は、`--repository-root <path>` を付ける
+- `analyze-pr` / `design-handoff` / `publish-handoff` は、必要な `config.json` と local DB を自動初期化する
+
 1. 必要なら `capabilities` で前提と非対応を確認する
 2. `analyze-pr` で PR / related issue / 既存テストを整理する
 3. 不足文脈があれば、その skill の中で `AskUserQuestion` を使って確認する
@@ -136,6 +142,11 @@ GitLab MR の場合:
 ```
 
 `design-handoff` の結果を確認後、`--output` で Markdown ファイルとして保存します。
+
+補足:
+
+- Claude Code から skill を実行する場合も、対象 repository で開いている前提が最も安全です
+- plugin 開発中などで別ディレクトリから CLI を直接呼ぶ場合は、`--repository-root /path/to/target-repo` を使ってください
 
 ## スキル
 
@@ -212,7 +223,11 @@ Local SQLite DB | resumable state / cache
 bun run dev doctor
 
 # DB 初期化
+# 対象 repository で実行する場合
 bun run dev db init
+
+# plugin ディレクトリなど別 cwd から実行する場合
+bun run dev db init --repository-root /path/to/target-repo
 
 # Plugin manifest 確認
 bun run dev manifest show
@@ -224,6 +239,14 @@ bun run dev publish-handoff --pr <number>
 
 # GitLab MR の場合: publish-handoff の代わりに markdown ファイル出力
 bun run dev design-handoff --pr <number> --output qa-handoff.md
+
+# 別 cwd から対象 repository を明示する場合
+bun run dev analyze-pr --pr <number> --repository-root /path/to/target-repo
+bun run dev design-handoff --pr <number> --repository-root /path/to/target-repo
+bun run dev publish-handoff --pr <number> --repository-root /path/to/target-repo
+
+# GitLab MR を別 cwd から対象 repository を明示して出力する場合
+bun run dev design-handoff --pr <number> --output qa-handoff.md --repository-root /path/to/target-repo
 
 # 低レベル GitHub Issue 操作
 # publish-handoff が内部で使う raw ops。通常は直接呼ぶ必要はない。
@@ -237,6 +260,7 @@ bun run dev handoff add-comment --repository <owner/repo> --issue-number <number
 
 - local DB は shared source of truth ではありません
 - GitHub Issue が QA handoff の正本です
+- CLI を対象 repository 以外から実行する場合は `--repository-root` を明示してください
 - この plugin の目的は manual exploration を増やすことではなく、manual に残る前に削ることです
 - 手動探索では checklist 消化よりも、推論しながら曖昧さを観察することを重視します
 

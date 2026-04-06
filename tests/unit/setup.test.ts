@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
@@ -30,6 +31,24 @@ describe("initializeWorkspace", () => {
     expect(secondRun.createdConfig).toBe(false);
     expect(firstRun.journalMode.toLowerCase()).toBe("wal");
     expect(firstRun.foreignKeys).toBe(1);
+  });
+
+  it("updates config when repositoryRoot override is provided", async () => {
+    const workspace = await registerWorkspace();
+    const repositoryRoot = `${workspace.root}/../consumer-repo`;
+    const resolvedDatabasePath = resolve(
+      repositoryRoot,
+      "exploratory-testing.db",
+    );
+
+    const result = await initializeWorkspace(
+      workspace.configPath,
+      workspace.manifestPath,
+      { repositoryRoot },
+    );
+
+    expect(result.config.workspaceRoot).toBe(repositoryRoot);
+    expect(result.databasePath).toBe(resolvedDatabasePath);
   });
 });
 

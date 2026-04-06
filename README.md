@@ -163,10 +163,7 @@ Local SQLite DB | resumable state / cache
   "scmProvider": "auto",
   "defaultLanguage": "ja",
   "paths": {
-    "database": "exploratory-testing.db",
-    "progressDirectory": ".exploratory-testing/progress",
-    "progressSummary": ".exploratory-testing/progress/progress-summary.md",
-    "artifactsDirectory": "output"
+    "database": "exploratory-testing.db"
   },
   "publishDefaults": {
     "repository": "owner/repo",
@@ -182,7 +179,6 @@ Local SQLite DB | resumable state / cache
 
 - CLI 境界で相対パスを絶対パスに解決する
 - `publishDefaults` は publish-handoff の既定値であり、空の項目は skill 実行時に補完する想定
-- `paths.progressDirectory` / `paths.artifactsDirectory` は実装内部のキャッシュパスであり、user-facing の重要設定ではない
 - secrets は `config.json` に入れない
 - GitHub 認証は raw token より `gh auth` を優先する
 

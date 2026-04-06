@@ -30,8 +30,6 @@ export async function createTestWorkspace(): Promise<TestWorkspace> {
         state: {
           config: "config.json",
           database: "exploratory-testing.db",
-          progressDirectory: ".exploratory-testing/progress",
-          artifactsDirectory: "output",
         },
         skills: [
           {

@@ -315,17 +315,13 @@ describe("handoff tool", () => {
           defaultLanguage: "ja",
           paths: {
             database: "exploratory-testing.db",
-            progressDirectory: ".exploratory-testing/progress",
-            progressSummary:
-              ".exploratory-testing/progress/progress-summary.md",
-            artifactsDirectory: "output",
           },
           publishDefaults: {
             repository: "org/qa-handoff",
             titlePrefix: "QA Handoff",
             labels: ["qa-handoff", "ready-for-qa"],
             assignees: ["alice"],
-            findingsComment: true,
+
             mode: "create-or-update",
           },
         },
@@ -371,17 +367,13 @@ describe("handoff tool", () => {
           defaultLanguage: "ja",
           paths: {
             database: "exploratory-testing.db",
-            progressDirectory: ".exploratory-testing/progress",
-            progressSummary:
-              ".exploratory-testing/progress/progress-summary.md",
-            artifactsDirectory: "output",
           },
           publishDefaults: {
             repository: "org/qa-handoff",
             titlePrefix: "QA Handoff",
             labels: ["qa-handoff"],
             assignees: ["alice"],
-            findingsComment: true,
+
             mode: "create-or-update",
           },
         },
@@ -430,17 +422,13 @@ describe("handoff tool", () => {
           defaultLanguage: "ja",
           paths: {
             database: "exploratory-testing.db",
-            progressDirectory: ".exploratory-testing/progress",
-            progressSummary:
-              ".exploratory-testing/progress/progress-summary.md",
-            artifactsDirectory: "output",
           },
           publishDefaults: {
             repository: "org/qa-handoff",
             titlePrefix: "QA Handoff",
             labels: ["qa-handoff"],
             assignees: ["alice"],
-            findingsComment: false,
+
             mode: "create-or-update",
           },
         },
@@ -493,15 +481,11 @@ describe("handoff tool", () => {
           defaultLanguage: "ja",
           paths: {
             database: "exploratory-testing.db",
-            progressDirectory: ".exploratory-testing/progress",
-            progressSummary:
-              ".exploratory-testing/progress/progress-summary.md",
-            artifactsDirectory: "output",
           },
           publishDefaults: {
             repository: "org/qa-handoff",
             titlePrefix: 'QA "Handoff"',
-            findingsComment: false,
+
             mode: "create-or-update",
           },
         },
@@ -545,10 +529,6 @@ describe("handoff tool", () => {
           defaultLanguage: "ja",
           paths: {
             database: "exploratory-testing.db",
-            progressDirectory: ".exploratory-testing/progress",
-            progressSummary:
-              ".exploratory-testing/progress/progress-summary.md",
-            artifactsDirectory: "output",
           },
           publishDefaults: {
             repository: "org/qa-handoff",

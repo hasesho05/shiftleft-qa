@@ -30,20 +30,10 @@ describe("plugin config", () => {
 
     expect(ensured.created).toBe(true);
     expect(ensured.rawConfig.paths.database).toBe("exploratory-testing.db");
-    expect(ensured.rawConfig.paths.progressSummary).toBe(
-      ".exploratory-testing/progress/progress-summary.md",
-    );
     expect(ensured.rawConfig.publishDefaults.mode).toBe("create-or-update");
     expect(resolved.paths.database).toBe(
       `${workspace.root}/exploratory-testing.db`,
     );
-    expect(resolved.paths.progressDirectory).toBe(
-      `${workspace.root}/.exploratory-testing/progress`,
-    );
-    expect(resolved.paths.progressSummary).toBe(
-      `${workspace.root}/.exploratory-testing/progress/progress-summary.md`,
-    );
-    expect(resolved.paths.artifactsDirectory).toBe(`${workspace.root}/output`);
     expect(resolved.publishDefaults.mode).toBe("create-or-update");
     expect(resolved.publishDefaults.repository).toBeUndefined();
     expect(resolved.publishDefaults.titlePrefix).toBeUndefined();

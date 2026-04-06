@@ -233,7 +233,7 @@ function resolveAllocationContext(
 
   if (!riskAssessment) {
     throw new Error(
-      `Risk assessment not found for id=${riskAssessmentId}. Run assess-gaps first.`,
+      `Risk assessment not found for id=${riskAssessmentId}. Run analyze-pr and design-handoff first.`,
     );
   }
 
@@ -244,7 +244,7 @@ function resolveAllocationContext(
 
   if (!testMapping) {
     throw new Error(
-      `Test mapping not found for id=${riskAssessment.testMappingId}. Run map-tests first.`,
+      `Test mapping not found for id=${riskAssessment.testMappingId}. Run analyze-pr first.`,
     );
   }
 
@@ -255,7 +255,7 @@ function resolveAllocationContext(
 
   if (!changeAnalysis) {
     throw new Error(
-      `Change analysis not found for id=${testMapping.changeAnalysisId}. Run discover-context first.`,
+      `Change analysis not found for id=${testMapping.changeAnalysisId}. Run analyze-pr first.`,
     );
   }
 
@@ -266,7 +266,7 @@ function resolveAllocationContext(
 
   if (!prIntake) {
     throw new Error(
-      `PR intake not found for id=${testMapping.prIntakeId}. Run pr-intake first.`,
+      `PR intake not found for id=${testMapping.prIntakeId}. Run analyze-pr first.`,
     );
   }
 

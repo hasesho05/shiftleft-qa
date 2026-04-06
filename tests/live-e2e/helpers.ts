@@ -29,8 +29,6 @@ export const PLUGIN_MANIFEST = {
   state: {
     config: "config.json",
     database: "exploratory-testing.db",
-    progressDirectory: ".exploratory-testing/progress",
-    artifactsDirectory: "output",
   },
   skills: [
     {

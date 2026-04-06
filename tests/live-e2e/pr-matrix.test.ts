@@ -65,7 +65,7 @@ async function runMatrixPipeline(
     CANONICAL_REPO,
   ] as const;
 
-  await runCli(["setup"], workspaceRoot);
+  await runCli(["db", "init"], workspaceRoot);
 
   const prIntake = await runCli(
     ["pr-intake", "--pr", String(prNumber)],

@@ -110,7 +110,7 @@ describe.skipIf(!ghAuthAvailable)(
       );
 
       // 2. Run pipeline through allocate
-      await runCli(["setup"], workspaceRoot);
+      await runCli(["db", "init"], workspaceRoot);
       await runCli(["pr-intake", ...PR_ARGS.slice(0, 2)], workspaceRoot);
       await runCli(["discover-context", ...PR_ARGS], workspaceRoot);
       await runCli(["map-tests", ...PR_ARGS], workspaceRoot);

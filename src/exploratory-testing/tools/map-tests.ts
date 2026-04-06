@@ -49,7 +49,7 @@ export async function runMapTests(
 
   if (!prIntake) {
     throw new Error(
-      `PR intake not found for ${input.provider}/${input.repository}#${input.prNumber}. Run pr-intake first.`,
+      `PR intake not found for ${input.provider}/${input.repository}#${input.prNumber}. Run analyze-pr first.`,
     );
   }
 
@@ -57,7 +57,7 @@ export async function runMapTests(
 
   if (!changeAnalysis) {
     throw new Error(
-      `Change analysis not found for pr_intake_id=${prIntake.id}. Run discover-context first.`,
+      `Change analysis not found for pr_intake_id=${prIntake.id}. Run analyze-pr first.`,
     );
   }
 

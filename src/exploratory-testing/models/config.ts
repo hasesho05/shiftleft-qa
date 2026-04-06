@@ -11,9 +11,6 @@ export const defaultLanguageSchema = schema(v.picklist(["ja", "en"]));
 export const pluginConfigPathsSchema = schema(
   v.object({
     database: nonEmptyString(),
-    progressDirectory: nonEmptyString(),
-    progressSummary: nonEmptyString(),
-    artifactsDirectory: nonEmptyString(),
   }),
 );
 
@@ -70,8 +67,5 @@ export type ResolvedPluginConfig = {
   readonly publishDefaults: PluginConfig["publishDefaults"];
   readonly paths: {
     readonly database: string;
-    readonly progressDirectory: string;
-    readonly progressSummary: string;
-    readonly artifactsDirectory: string;
   };
 };

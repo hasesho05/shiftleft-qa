@@ -1,5 +1,5 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 import {
   type PluginConfig,
@@ -26,12 +26,6 @@ export function createDefaultPluginConfig(
     defaultLanguage: "ja",
     paths: {
       database: manifest.state.database,
-      progressDirectory: manifest.state.progressDirectory,
-      progressSummary: join(
-        manifest.state.progressDirectory,
-        "progress-summary.md",
-      ),
-      artifactsDirectory: manifest.state.artifactsDirectory,
     },
     publishDefaults: {
       mode: "create-or-update",
@@ -48,7 +42,7 @@ export async function readPluginConfig(
 
   if (!(await pathExists(absoluteConfigPath))) {
     throw new Error(
-      `config ファイルが見つかりません: ${absoluteConfigPath}。先に exploratory-testing setup を実行してください。`,
+      `config ファイルが見つかりません: ${absoluteConfigPath}。config.json を作成するか、bun run dev db init を実行してください。`,
     );
   }
 
@@ -124,18 +118,6 @@ export function resolvePluginConfig(
     relativePaths: config.paths,
     paths: {
       database: resolveFromBase(workspaceRoot, config.paths.database),
-      progressDirectory: resolveFromBase(
-        workspaceRoot,
-        config.paths.progressDirectory,
-      ),
-      progressSummary: resolveFromBase(
-        workspaceRoot,
-        config.paths.progressSummary,
-      ),
-      artifactsDirectory: resolveFromBase(
-        workspaceRoot,
-        config.paths.artifactsDirectory,
-      ),
     },
   };
 }

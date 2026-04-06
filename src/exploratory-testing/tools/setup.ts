@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import { relative } from "node:path";
 
 import {
@@ -21,11 +20,7 @@ export type DatabaseInitializationResult = {
   readonly foreignKeys: number;
 };
 
-export type WorkspaceSetupResult = DatabaseInitializationResult & {
-  readonly progressDirectory: string;
-  readonly progressSummaryPath: string;
-  readonly artifactsDirectory: string;
-};
+export type WorkspaceSetupResult = DatabaseInitializationResult;
 
 export async function initializeDatabaseFromConfig(
   configPath = "config.json",
@@ -44,14 +39,8 @@ export async function initializeWorkspace(
   const ensured = await ensurePluginConfig(configPath, manifestPath);
   const database = await initializeDatabaseFromEnsuredConfig(ensured);
 
-  await mkdir(database.config.paths.progressDirectory, { recursive: true });
-  await mkdir(database.config.paths.artifactsDirectory, { recursive: true });
-
   return {
     ...database,
-    progressDirectory: database.config.paths.progressDirectory,
-    progressSummaryPath: database.config.paths.progressSummary,
-    artifactsDirectory: database.config.paths.artifactsDirectory,
   };
 }
 
@@ -73,9 +62,6 @@ async function initializeDatabaseFromEnsuredConfig(
     ),
     repositoryRoot: ensured.config.repositoryRoot,
     databasePath: ensured.config.relativePaths.database,
-    progressDirectory: ensured.config.relativePaths.progressDirectory,
-    progressSummaryPath: ensured.config.relativePaths.progressSummary,
-    artifactsDirectory: ensured.config.relativePaths.artifactsDirectory,
     scmProvider: ensured.config.scmProvider,
     defaultLanguage: ensured.config.defaultLanguage,
   });

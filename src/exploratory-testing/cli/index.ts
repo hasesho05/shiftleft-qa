@@ -16,8 +16,10 @@ import {
   runAllocate,
   summarizeAllocation,
 } from "../tools/allocate";
+import { runAnalyzePr } from "../tools/analyze-pr";
 import { runAssessGaps } from "../tools/assess-gaps";
 import { readPluginConfig } from "../tools/config";
+import { runDesignHandoff } from "../tools/design-handoff";
 import { runDiscoverContext } from "../tools/discover-context";
 import { createEnvironmentReport } from "../tools/doctor";
 import { exportArtifacts } from "../tools/export-artifacts";
@@ -35,6 +37,7 @@ import { readPluginManifest } from "../tools/manifest";
 import { runMapTests } from "../tools/map-tests";
 import { runPrIntake } from "../tools/pr-intake";
 import { writeProgressSummary, writeStepHandover } from "../tools/progress";
+import { runPublishHandoffOrchestration } from "../tools/publish-handoff-orchestration";
 import {
   addSessionObservation,
   completeSession,
@@ -165,6 +168,17 @@ type HandoffCommentCommandOptions = {
   readonly body?: string;
   readonly bodyFile?: string;
   readonly cwd?: string;
+};
+
+type PublishHandoffCommandOptions = WorkspaceCommandOptions & {
+  readonly pr?: number;
+  readonly provider?: string;
+  readonly repository?: string;
+  readonly issueNumber?: number;
+  readonly sessionId?: number;
+  readonly title?: string;
+  readonly label?: string[];
+  readonly assignee?: string[];
 };
 
 export type JsonSuccessEnvelope<T> = {
@@ -1251,6 +1265,111 @@ cli
         issueNumber,
         commentUrl: result.comment.url,
       };
+    }),
+  );
+
+// ---------------------------------------------------------------------------
+// Public flow orchestration commands
+// ---------------------------------------------------------------------------
+
+cli
+  .command(
+    "analyze-pr",
+    "PR を解析し、intent / test coverage / risk を一括で取得する (public flow)",
+  )
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr <prNumber>", "PR または MR 番号")
+  .action(
+    createEnvelopeAction(async (options: PrIntakeCommandOptions) => {
+      if (!options.pr) {
+        throw new Error("--pr オプションは必須です。");
+      }
+
+      const result = await runAnalyzePr({
+        prNumber: options.pr,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return result;
+    }),
+  );
+
+cli
+  .command(
+    "design-handoff",
+    "analyze-pr の結果から QA handoff ドラフトを生成する (public flow)",
+  )
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr <prNumber>", "PR または MR 番号")
+  .option("--provider <provider>", "SCM プロバイダ (省略時は DB から解決)")
+  .option("--repository <repository>", "リポジトリ (省略時は DB から解決)")
+  .action(
+    createEnvelopeAction(async (options: PrPipelineCommandOptions) => {
+      if (!options.pr) {
+        throw new Error("--pr オプションは必須です。");
+      }
+
+      const result = await runDesignHandoff({
+        prNumber: options.pr,
+        provider: options.provider,
+        repository: options.repository,
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return {
+        prNumber: result.prNumber,
+        repository: result.repository,
+        alreadyCovered: result.draft.alreadyCovered,
+        shouldAutomate: result.draft.shouldAutomate,
+        manualExploration: result.draft.manualExploration,
+        counts: result.counts,
+        summary: result.summary,
+      };
+    }),
+  );
+
+cli
+  .command(
+    "publish-handoff",
+    "QA handoff を GitHub Issue として publish / update する (public flow)",
+  )
+  .option("--config <configPath>", "config.json のパス")
+  .option("--manifest <manifestPath>", "plugin.json のパス")
+  .option("--pr <prNumber>", "PR または MR 番号")
+  .option("--provider <provider>", "SCM プロバイダ (省略時は DB から解決)")
+  .option("--repository <repository>", "リポジトリ (省略時は DB から解決)")
+  .option(
+    "--issue-number <issueNumber>",
+    "更新対象の Issue 番号 (省略時は新規作成)",
+  )
+  .option("--session-id <sessionId>", "findings を付加するセッション ID")
+  .option("--title <title>", "Issue タイトル (省略時は publishDefaults から)")
+  .option("--label <label>", "Issue ラベル (複数指定可)")
+  .option("--assignee <assignee>", "Issue アサイニー (複数指定可)")
+  .action(
+    createEnvelopeAction(async (options: PublishHandoffCommandOptions) => {
+      if (!options.pr) {
+        throw new Error("--pr オプションは必須です。");
+      }
+
+      const result = await runPublishHandoffOrchestration({
+        prNumber: options.pr,
+        provider: options.provider,
+        repository: options.repository,
+        issueNumber: options.issueNumber,
+        sessionId: options.sessionId,
+        title: options.title,
+        labels: normalizeArrayOption(options.label),
+        assignees: normalizeArrayOption(options.assignee),
+        configPath: options.config,
+        manifestPath: options.manifest,
+      });
+
+      return result;
     }),
   );
 

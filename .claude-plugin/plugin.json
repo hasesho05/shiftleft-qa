@@ -21,17 +21,17 @@
     {
       "name": "analyze-pr",
       "path": "skills/analyze-pr/SKILL.md",
-      "description": "PR と related issue を読み、intent context と既存テストを整理する。"
+      "description": "Public flow 1/3: PR を解析し intent context・既存テスト・risk を一括取得する。"
     },
     {
       "name": "design-handoff",
       "path": "skills/design-handoff/SKILL.md",
-      "description": "manual exploration に残す項目を絞り、QA handoff の下書きを作る。"
+      "description": "Public flow 2/3: analysis から QA handoff ドラフトを生成する。"
     },
     {
       "name": "publish-handoff",
       "path": "skills/publish-handoff/SKILL.md",
-      "description": "QA handoff Issue を publish / update し、必要なら findings を返す。"
+      "description": "Public flow 3/3: QA handoff を GitHub Issue として publish / update する。"
     },
     {
       "name": "setup",

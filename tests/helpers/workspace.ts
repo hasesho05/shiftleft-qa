@@ -23,40 +23,6 @@ export async function createTestWorkspace(): Promise<TestWorkspace> {
         version: "0.1.0",
         description:
           "Shift-left test allocation と GitHub QA handoff を支援する Claude Code Plugin。",
-        runtime: {
-          packageManager: "bun",
-          entry: "bun run dev",
-        },
-        state: {
-          config: "config.json",
-          database: "exploratory-testing.db",
-        },
-        skills: [
-          {
-            name: "capabilities",
-            path: "skills/capabilities/SKILL.md",
-            description:
-              "shiftleft-qa の対応範囲、前提、非対応事項を案内する。",
-          },
-          {
-            name: "analyze-pr",
-            path: "skills/analyze-pr/SKILL.md",
-            description:
-              "Public flow 1/3: PR を解析し intent context・既存テスト・risk を一括取得する。",
-          },
-          {
-            name: "design-handoff",
-            path: "skills/design-handoff/SKILL.md",
-            description:
-              "Public flow 2/3: analysis から QA handoff ドラフトを生成する。",
-          },
-          {
-            name: "publish-handoff",
-            path: "skills/publish-handoff/SKILL.md",
-            description:
-              "Public flow 3/3: QA handoff を GitHub Issue として publish / update する。",
-          },
-        ],
       },
       null,
       2,

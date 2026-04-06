@@ -27,7 +27,7 @@ QA / reviewer | GitHub Issue を起点に manual exploration を再開する | F
 
 最終形では、CLI が主フローを駆動するのではなく、`analyze-pr` → `design-handoff` → `publish-handoff` の 3 つの public skill が順にリレーする形を目指します。
 
-`publish-handoff` で使う publish policy は `config.json` に default 値として保存してよく、空の項目だけを対話で確認する想定です。
+`publish-handoff` で使う publish policy は `config.json` に default 値として保存してよく、空の項目は skill 実行時に確認する運用を想定しています。CLI 単体での対話補完はまだ完成していません。
 
 ## 対応範囲
 
@@ -137,7 +137,8 @@ Public skill | 吸収していく旧 skill / step
 - GitHub Issue を create / update する
 - 必要なら findings comment を追加する
 - publish 前に title / target issue / scope を確認してよい
-- `config.json` の `publishDefaults` に target repository / title prefix / labels などがあれば既定値として使い、空なら確認する
+- `config.json` の `publishDefaults` に target repository / title prefix / labels などがあれば既定値として使う
+- 空の項目は skill 実行時に確認する想定だが、CLI 単体での対話補完はまだ実装途中
 - 完了後に結果を返す
 
 ### Claude Code での開始例
@@ -269,7 +270,7 @@ primary handoff は GitHub Issue です。
 
 - `setup` は相対パスを `config.json` に保存する
 - CLI 境界で絶対パスに解決する
-- `publishDefaults` は publish-handoff の既定値であり、空の項目は対話で補完する
+- `publishDefaults` は publish-handoff の既定値であり、空の項目は skill 実行時に補完する想定
 - secrets は `config.json` に入れない
 - GitHub 認証は raw token より `gh auth` を優先する
 

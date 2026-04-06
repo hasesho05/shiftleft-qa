@@ -20,6 +20,7 @@ QA handoff を GitHub Issue として publish / update し、shared source of tr
 - `config.json` の `publishDefaults` があれば publish の既定値として使う。
 - publish 前に必要なら title / target issue / scope をユーザーに確認してよい。
 - 質問は、config と draft から埋まらない項目だけに絞る。
+- この「不足項目を確認する」振る舞いは skill contract の責務であり、CLI 単体の実装はまだ追従途中である。
 
 ## 実行手順
 

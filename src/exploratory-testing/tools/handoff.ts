@@ -207,7 +207,7 @@ function resolvePublishDefaults(
   markdown: HandoffMarkdownResult,
   input: HandoffPublishInput,
 ): ResolvedPublishDefaults {
-  const repository = config.publishDefaults.repository ?? markdown.repository;
+  const repository = resolvePublishRepository(config, markdown.repository);
   const titlePrefix = config.publishDefaults.titlePrefix ?? "QA";
   const prNumber = extractPrNumber(markdown.markdown);
   const title =
@@ -225,6 +225,13 @@ function resolvePublishDefaults(
     labels,
     assignees,
   };
+}
+
+function resolvePublishRepository(
+  config: ResolvedPluginConfig,
+  fallbackRepository: string,
+): string {
+  return config.publishDefaults.repository ?? fallbackRepository;
 }
 
 function normalizeOptionalStringArray(
@@ -319,7 +326,7 @@ export async function runUpdateHandoffIssue(
 
   await editIssueBody({
     repositoryRoot: config.workspaceRoot,
-    repository: markdown.repository,
+    repository: resolvePublishRepository(config, markdown.repository),
     issueNumber: input.issueNumber,
     body: markdown.markdown,
   });
@@ -356,7 +363,7 @@ export async function runAddHandoffComment(
 
   const comment = await addIssueComment({
     repositoryRoot: config.workspaceRoot,
-    repository: context.prIntake.repository,
+    repository: resolvePublishRepository(config, context.prIntake.repository),
     issueNumber: input.issueNumber,
     body,
   });

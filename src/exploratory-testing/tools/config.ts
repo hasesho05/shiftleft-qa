@@ -7,7 +7,6 @@ import {
   partialPluginConfigSchema,
   pluginConfigSchema,
 } from "../models/config";
-import type { PluginManifest, SkillManifest } from "../models/plugin-manifest";
 import { readPluginManifest } from "./manifest";
 
 export type EnsuredPluginConfig = {
@@ -16,16 +15,16 @@ export type EnsuredPluginConfig = {
   readonly created: boolean;
 };
 
-export function createDefaultPluginConfig(
-  manifest: PluginManifest,
-): PluginConfig {
+const DEFAULT_DATABASE_PATH = "exploratory-testing.db";
+
+export function createDefaultPluginConfig(): PluginConfig {
   return pluginConfigSchema.parse({
     version: 1,
     repositoryRoot: ".",
     scmProvider: "auto",
     defaultLanguage: "ja",
     paths: {
-      database: manifest.state.database,
+      database: DEFAULT_DATABASE_PATH,
     },
     publishDefaults: {
       mode: "create-or-update",
@@ -38,7 +37,7 @@ export async function readPluginConfig(
   manifestPath = ".claude-plugin/plugin.json",
 ): Promise<ResolvedPluginConfig> {
   const absoluteConfigPath = resolve(configPath);
-  const manifest = await readPluginManifest(manifestPath);
+  await readPluginManifest(manifestPath);
 
   if (!(await pathExists(absoluteConfigPath))) {
     throw new Error(
@@ -48,7 +47,7 @@ export async function readPluginConfig(
 
   const contents = await readFile(absoluteConfigPath, "utf8");
   const rawConfig: unknown = JSON.parse(contents);
-  const config = normalizePluginConfig(rawConfig, manifest);
+  const config = normalizePluginConfig(rawConfig);
 
   return resolvePluginConfig(config, absoluteConfigPath);
 }
@@ -73,10 +72,10 @@ export async function ensurePluginConfig(
   manifestPath = ".claude-plugin/plugin.json",
 ): Promise<EnsuredPluginConfig> {
   const absoluteConfigPath = resolve(configPath);
-  const manifest = await readPluginManifest(manifestPath);
+  await readPluginManifest(manifestPath);
 
   if (!(await pathExists(absoluteConfigPath))) {
-    const config = createDefaultPluginConfig(manifest);
+    const config = createDefaultPluginConfig();
     await writePluginConfig(config, absoluteConfigPath);
 
     return {
@@ -88,7 +87,7 @@ export async function ensurePluginConfig(
 
   const contents = await readFile(absoluteConfigPath, "utf8");
   const rawConfig: unknown = JSON.parse(contents);
-  const config = normalizePluginConfig(rawConfig, manifest);
+  const config = normalizePluginConfig(rawConfig);
   await writePluginConfig(config, absoluteConfigPath);
 
   return {
@@ -122,17 +121,8 @@ export function resolvePluginConfig(
   };
 }
 
-export function buildManifestSkillsSnapshot(
-  skills: readonly SkillManifest[],
-): readonly string[] {
-  return skills.map((skill) => skill.name);
-}
-
-function normalizePluginConfig(
-  rawConfig: unknown,
-  manifest: PluginManifest,
-): PluginConfig {
-  const defaults = createDefaultPluginConfig(manifest);
+function normalizePluginConfig(rawConfig: unknown): PluginConfig {
+  const defaults = createDefaultPluginConfig();
   const partialConfig = partialPluginConfigSchema.parse(rawConfig);
 
   return pluginConfigSchema.parse({

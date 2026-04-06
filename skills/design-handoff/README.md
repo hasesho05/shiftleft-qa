@@ -1,7 +1,6 @@
 # design-handoff
 
-analysis 結果から `already covered` / `should automate` /
-`manual exploration required` を整理し、QA handoff draft を作る public skill です。
+analysis 結果から実装要件・テストレイヤー・手動確認が必要な項目を整理し、QA handoff draft を作る public skill です。
 
 主な役割:
 

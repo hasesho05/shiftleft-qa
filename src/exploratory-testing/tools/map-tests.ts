@@ -3,6 +3,7 @@ import {
   detectMissingLayers,
 } from "../analysis/build-coverage-gap-map";
 import { findTestAssets } from "../analysis/find-test-files";
+import { isNonProductNoise } from "../analysis/is-product-relevant";
 import {
   type PersistedChangeAnalysis,
   type PersistedPrIntake,
@@ -70,12 +71,15 @@ export async function runMapTestsFromAnalysis(
   config: ResolvedPluginConfig,
 ): Promise<MapTestsResult> {
   const testAssets = findTestAssets(prIntake.changedFiles);
+  const productFileAnalyses = changeAnalysis.fileAnalyses.filter(
+    (file) => !isNonProductNoise(file.path),
+  );
   const testSummaries = buildInitialTestSummaries(
     testAssets,
-    changeAnalysis.fileAnalyses,
+    productFileAnalyses,
   );
   const coverageGapMap = buildCoverageGapMap(
-    changeAnalysis.fileAnalyses,
+    productFileAnalyses,
     testAssets,
     testSummaries,
   );

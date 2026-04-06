@@ -81,4 +81,4 @@ bun run dev publish-handoff --pr <number> --issue-number <number> --repository-r
 ## 完了条件
 
 - GitHub Issue が最新の QA handoff を表している。
-- body に PR 要約、intent context、layer applicability、manual exploration が含まれている。
+- body に実装要件 (関連テスト・根拠ソース付き)、テストレイヤー、手動確認が必要な項目、備考が含まれている。

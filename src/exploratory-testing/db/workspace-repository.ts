@@ -79,6 +79,53 @@ export function initializeWorkspaceDatabase(databasePath: string): void {
   }
 }
 
+export const EXPECTED_TABLES = [
+  "workspace_state",
+  "pr_intakes",
+  "change_analyses",
+  "test_mappings",
+  "risk_assessments",
+  "allocation_items",
+  "pr_intake_contexts",
+] as const;
+
+export type DatabaseTableVerification = {
+  readonly verifiedTables: readonly string[];
+  readonly missingTables: readonly string[];
+};
+
+type SqliteMasterRow = {
+  readonly name: string;
+};
+
+export function verifyDatabaseTables(
+  databasePath: string,
+): DatabaseTableVerification {
+  const database = openDatabase(databasePath);
+
+  try {
+    const rows = database
+      .query("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all() as readonly SqliteMasterRow[];
+
+    const existingTables = new Set(rows.map((row) => row.name));
+    const verifiedTables: string[] = [];
+    const missingTables: string[] = [];
+
+    for (const table of EXPECTED_TABLES) {
+      if (existingTables.has(table)) {
+        verifiedTables.push(table);
+      } else {
+        missingTables.push(table);
+      }
+    }
+
+    return { verifiedTables, missingTables };
+  } finally {
+    database.close();
+  }
+}
+
 export function getDatabasePragmas(databasePath: string): DatabasePragmas {
   const database = openDatabase(databasePath);
 

@@ -163,6 +163,8 @@ cli
         createdConfig: result.createdConfig,
         configPath: result.config.configPath,
         databasePath: result.databasePath,
+        workspaceRoot: result.workspaceRoot,
+        verifiedTables: result.verifiedTables,
         journalMode: result.journalMode,
         foreignKeys: result.foreignKeys,
       };

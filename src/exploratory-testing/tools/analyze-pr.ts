@@ -51,7 +51,11 @@ export type AnalyzePrResult = {
     readonly frameworks: readonly string[];
     readonly themes: number;
   };
-  readonly layerApplicability: LayerApplicabilityAssessment;
+  readonly layerApplicability: {
+    readonly assessment: LayerApplicabilityAssessment;
+    readonly phase: "pre-allocation";
+    readonly note: string;
+  };
   readonly summary: string;
 };
 
@@ -107,7 +111,11 @@ export async function runAnalyzePr(
     changedFiles: buildChangedFilesSummary(context.persisted.fileAnalyses),
     testCoverage: buildTestCoverageSummary(mapping.persisted),
     riskHighlights: buildRiskHighlights(gaps.persisted),
-    layerApplicability,
+    layerApplicability: {
+      assessment: layerApplicability,
+      phase: "pre-allocation",
+      note: "Preliminary assessment before allocation. Final test layers appear in handoff.",
+    },
     summary: buildOverallSummary(
       intake.persisted,
       context.persisted.fileAnalyses,

@@ -1,3 +1,5 @@
+import { deriveDirectoryPrefix } from "../analysis/group-allocation-items";
+import { isNonProductNoise } from "../analysis/is-product-relevant";
 import {
   type PersistedAllocationItem,
   countAllocationItemsByDestination,
@@ -131,9 +133,9 @@ export function buildAllocationItems(
   context: AllocationContext,
 ): readonly AllocationItem[] {
   const fileAnalysisByPath = new Map(
-    context.changeAnalysis.fileAnalyses.map(
-      (analysis) => [analysis.path, analysis] as const,
-    ),
+    context.changeAnalysis.fileAnalyses
+      .filter((analysis) => !isNonProductNoise(analysis.path))
+      .map((analysis) => [analysis.path, analysis] as const),
   );
   const gapsByFile = groupCoverageGapsByFile(
     context.testMapping.coverageGapMap,
@@ -360,6 +362,14 @@ function buildAllocationItem(input: {
       manualRemainder:
         destination === "manual-exploration"
           ? buildManualRemainder(input.fileAnalysis.path, input.gap, categories)
+          : undefined,
+      manualExplorationDetail:
+        destination === "manual-exploration" || destination === "dev-box"
+          ? buildManualExplorationDetail(
+              input.fileAnalysis.path,
+              input.gap,
+              categories,
+            )
           : undefined,
     },
   };
@@ -751,6 +761,63 @@ function deriveOpenQuestions(
   }
 
   return questions;
+}
+
+function buildManualExplorationDetail(
+  filePath: string,
+  gap: CoverageGapEntry,
+  categories: readonly ChangeCategory[],
+): {
+  readonly targetSurface: string;
+  readonly whyManual: string;
+  readonly whatToObserve: string;
+  readonly likelyFailureMode: string;
+} {
+  const targetSurface = deriveDirectoryPrefix(filePath);
+  const whyManual =
+    categories.length > 0
+      ? `Categories (${categories.join(", ")}) did not determine a single automated destination.`
+      : "No classification rules matched; behavior is ambiguous.";
+  const whatToObserve = deriveWhatToObserve(gap.aspect);
+  const likelyFailureMode = deriveLikelyFailureMode(gap.aspect, categories);
+
+  return { targetSurface, whyManual, whatToObserve, likelyFailureMode };
+}
+
+function deriveWhatToObserve(aspect: CoverageAspect): string {
+  switch (aspect) {
+    case "happy-path":
+      return "Core functionality works as intended under normal conditions.";
+    case "error-path":
+      return "Error states, recovery behavior, and user-facing error messages.";
+    case "boundary":
+      return "Edge cases at input boundaries (empty, max, special characters).";
+    case "permission":
+      return "Access control for different roles and unauthorized access attempts.";
+    case "state-transition":
+      return "State consistency across transitions, race conditions, ordering dependencies.";
+    case "mock-fixture":
+      return "Behavior when external dependencies are slow, unavailable, or return unexpected data.";
+  }
+}
+
+function deriveLikelyFailureMode(
+  aspect: CoverageAspect,
+  categories: readonly ChangeCategory[],
+): string {
+  if (aspect === "state-transition") {
+    return "State corruption or inconsistent UI after concurrent operations.";
+  }
+  if (aspect === "permission") {
+    return "Unauthorized access or missing permission checks for certain roles.";
+  }
+  if (aspect === "error-path") {
+    return "Unhandled error conditions or silent failures in production.";
+  }
+  if (categories.includes("async") || categories.includes("cross-service")) {
+    return "Timeout or data loss under degraded external service conditions.";
+  }
+  return "Unexpected behavior under conditions not covered by automated tests.";
 }
 
 function buildManualRemainder(

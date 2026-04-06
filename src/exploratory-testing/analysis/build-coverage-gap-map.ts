@@ -183,10 +183,9 @@ function getApplicableAspects(
     aspects.add("mock-fixture");
   }
 
-  if (aspects.size === 2 && file.categories.length === 0) {
-    return ALL_ASPECTS;
-  }
-
+  // Uncategorized files get the conservative baseline only (happy-path + error-path).
+  // Previously ALL_ASPECTS was returned here, but that caused excessive gap entries
+  // for files that simply have no matching classification rules.
   return [...aspects];
 }
 

@@ -134,22 +134,15 @@ describe("buildCoverageGapMap", () => {
     expect(boundary?.explorationPriority).toBe("medium");
   });
 
-  it("limits aspects to those relevant to the change categories", () => {
+  it("uses baseline aspects only for uncategorized files", () => {
     const fileAnalyses = [makeFileAnalysis("src/foo.ts")];
     const gaps = buildCoverageGapMap(fileAnalyses, [], []);
 
     const fooGaps = gaps.filter((g) => g.changedFilePath === "src/foo.ts");
-    expect(fooGaps).toHaveLength(6);
+    expect(fooGaps).toHaveLength(2);
 
     const aspects = fooGaps.map((g) => g.aspect).sort();
-    expect(aspects).toEqual([
-      "boundary",
-      "error-path",
-      "happy-path",
-      "mock-fixture",
-      "permission",
-      "state-transition",
-    ]);
+    expect(aspects).toEqual(["error-path", "happy-path"]);
   });
 
   it("reduces irrelevant aspects for categorized files", () => {

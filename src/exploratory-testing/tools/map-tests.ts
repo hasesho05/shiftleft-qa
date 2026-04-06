@@ -11,7 +11,6 @@ import {
   findPrIntake,
   saveTestMapping,
 } from "../db/workspace-repository";
-import { escapePipe } from "../lib/markdown";
 import type { ChangeCategory } from "../models/change-analysis";
 import type { ResolvedPluginConfig } from "../models/config";
 import type {
@@ -21,10 +20,6 @@ import type {
   TestSummary,
 } from "../models/test-mapping";
 import { readPluginConfig } from "./config";
-import {
-  type StepHandoverWriteResult,
-  writeStepHandoverFromConfig,
-} from "./progress";
 
 export type MapTestsInput = {
   readonly prNumber: number;
@@ -36,7 +31,6 @@ export type MapTestsInput = {
 
 export type MapTestsResult = {
   readonly persisted: PersistedTestMapping;
-  readonly handover: StepHandoverWriteResult;
 };
 
 export async function runMapTests(
@@ -98,16 +92,8 @@ export async function runMapTestsFromAnalysis(
   };
 
   const persisted = saveTestMapping(config.paths.database, mappingResult);
-  const body = buildHandoverBody(persisted);
 
-  const handover = await writeStepHandoverFromConfig(config, {
-    stepName: "map-tests",
-    status: "completed",
-    summary: `Mapped ${testAssets.length} test assets, ${coverageGapMap.length} gap entries, ${missingLayers.length} missing layers`,
-    body,
-  });
-
-  return { persisted, handover };
+  return { persisted };
 }
 
 function buildInitialTestSummaries(
@@ -131,68 +117,6 @@ function buildInitialTestSummaries(
       description: `Heuristic ${asset.layer} candidate for ${asset.relatedTo.join(", ")}`,
     };
   });
-}
-
-function buildHandoverBody(mapping: PersistedTestMapping): string {
-  const lines = [
-    `# Test Mapping (change_analysis_id: ${mapping.changeAnalysisId})`,
-    "",
-    "## Test Assets",
-    "",
-    "| Path | Layer | Related To | Confidence |",
-    "| --- | --- | --- | --- |",
-  ];
-
-  for (const asset of mapping.testAssets) {
-    lines.push(
-      `| ${escapePipe(asset.path)} | ${asset.layer} | ${asset.relatedTo.map(escapePipe).join(", ")} | ${asset.confidence} |`,
-    );
-  }
-  lines.push("");
-
-  if (mapping.missingLayers.length > 0) {
-    lines.push(
-      "## Missing Test Layers",
-      "",
-      `The following test layers have no candidates: **${mapping.missingLayers.join(", ")}**`,
-      "",
-    );
-  }
-
-  lines.push(
-    "## Coverage Gap Map",
-    "",
-    "| Changed File | Aspect | Status | Covered By | Priority |",
-    "| --- | --- | --- | --- | --- |",
-  );
-
-  for (const gap of mapping.coverageGapMap) {
-    const coveredBy =
-      gap.coveredBy.length > 0 ? gap.coveredBy.map(escapePipe).join(", ") : "—";
-    lines.push(
-      `| ${escapePipe(gap.changedFilePath)} | ${gap.aspect} | ${gap.status} | ${coveredBy} | ${gap.explorationPriority} |`,
-    );
-  }
-  lines.push("");
-
-  const highPriority = mapping.coverageGapMap.filter(
-    (g) => g.explorationPriority === "high",
-  );
-
-  if (highPriority.length > 0) {
-    lines.push("## High Priority Gaps (Manual Exploration Focus)", "");
-
-    for (const gap of highPriority) {
-      lines.push(
-        `- **${escapePipe(gap.changedFilePath)}**: ${gap.aspect} (${gap.status})`,
-      );
-    }
-    lines.push("");
-  }
-
-  lines.push("## Next step", "", "- assess-gaps", "");
-
-  return lines.join("\n");
 }
 
 function inferCoveredAspects(

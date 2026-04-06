@@ -12,7 +12,6 @@ import {
   ensurePluginConfig,
   readPluginConfig,
 } from "./config";
-import { writeStepHandoverFromConfig } from "./progress";
 
 export type DatabaseInitializationResult = {
   readonly config: ResolvedPluginConfig;
@@ -26,8 +25,6 @@ export type WorkspaceSetupResult = DatabaseInitializationResult & {
   readonly progressDirectory: string;
   readonly progressSummaryPath: string;
   readonly artifactsDirectory: string;
-  readonly setupProgressPath: string;
-  readonly currentStep: string | null;
 };
 
 export async function initializeDatabaseFromConfig(
@@ -50,34 +47,11 @@ export async function initializeWorkspace(
   await mkdir(database.config.paths.progressDirectory, { recursive: true });
   await mkdir(database.config.paths.artifactsDirectory, { recursive: true });
 
-  const setupProgress = await writeStepHandoverFromConfig(database.config, {
-    stepName: "setup",
-    status: "completed",
-    summary: "Workspace state initialized for exploratory testing.",
-    nextStep: "pr-intake",
-    body: [
-      "# Workspace setup",
-      "",
-      "## Summary",
-      "",
-      "- Created or validated `config.json`.",
-      "- Initialized the SQLite workspace database.",
-      "- Ensured the progress and output directories exist.",
-      "",
-      "## Next step",
-      "",
-      "- pr-intake",
-      "",
-    ].join("\n"),
-  });
-
   return {
     ...database,
     progressDirectory: database.config.paths.progressDirectory,
     progressSummaryPath: database.config.paths.progressSummary,
     artifactsDirectory: database.config.paths.artifactsDirectory,
-    setupProgressPath: setupProgress.filePath,
-    currentStep: "pr-intake",
   };
 }
 

@@ -11,7 +11,6 @@ import { runAssessGapsFromMapping } from "../../src/exploratory-testing/tools/as
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import { runDiscoverContextFromIntake } from "../../src/exploratory-testing/tools/discover-context";
 import { runMapTestsFromAnalysis } from "../../src/exploratory-testing/tools/map-tests";
-import { readStepHandoverDocument } from "../../src/exploratory-testing/tools/progress";
 import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
 import {
   type TestWorkspace,
@@ -132,41 +131,6 @@ describe("runAssessGapsFromMapping", () => {
     expect(dbRecord?.riskScores.length).toBe(
       result.persisted.riskScores.length,
     );
-  });
-
-  it("writes a handover document for the assess-gaps step", async () => {
-    const workspace = await setupWorkspace();
-    const config = await readPluginConfig(
-      workspace.configPath,
-      workspace.manifestPath,
-    );
-    const prIntake = savePrIntake(
-      workspace.databasePath,
-      createSampleMetadata(),
-    );
-    const contextResult = await runDiscoverContextFromIntake(prIntake, config);
-    const mappingResult = await runMapTestsFromAnalysis(
-      contextResult.persisted,
-      prIntake,
-      config,
-    );
-
-    const result = await runAssessGapsFromMapping(
-      mappingResult.persisted,
-      contextResult.persisted,
-      config,
-    );
-
-    expect(result.handover.snapshot.stepName).toBe("assess-gaps");
-    expect(result.handover.snapshot.status).toBe("completed");
-
-    const handoverDoc = await readStepHandoverDocument(
-      result.handover.filePath,
-    );
-    expect(handoverDoc.frontmatter.step_name).toBe("assess-gaps");
-    expect(handoverDoc.body).toContain("Risk Scores");
-    expect(handoverDoc.body).toContain("Framework Selections");
-    expect(handoverDoc.body).toContain("Exploration Themes");
   });
 
   it("is idempotent for same mapping", async () => {

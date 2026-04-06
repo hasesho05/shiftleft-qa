@@ -9,7 +9,6 @@ import type { IntentContext } from "../../src/exploratory-testing/models/intent-
 import type { PrMetadata } from "../../src/exploratory-testing/models/pr-intake";
 import { readPluginConfig } from "../../src/exploratory-testing/tools/config";
 import { runDiscoverContextFromIntake } from "../../src/exploratory-testing/tools/discover-context";
-import { readStepHandoverDocument } from "../../src/exploratory-testing/tools/progress";
 import { initializeWorkspace } from "../../src/exploratory-testing/tools/setup";
 import {
   type TestWorkspace,
@@ -83,7 +82,7 @@ describe("runDiscoverContextFromIntake", () => {
     return { ...workspace, databasePath: result.databasePath };
   }
 
-  it("analyzes PR intake and saves results to DB and handover", async () => {
+  it("analyzes PR intake and saves results to DB", async () => {
     const workspace = await setupWorkspace();
     const metadata = createSampleMetadata();
     const config = await readPluginConfig(
@@ -102,16 +101,6 @@ describe("runDiscoverContextFromIntake", () => {
     const dbRecord = findChangeAnalysis(workspace.databasePath, prIntake.id);
     expect(dbRecord).not.toBeNull();
     expect(dbRecord?.summary).toBeTruthy();
-
-    // Verify handover
-    expect(result.handover.snapshot.stepName).toBe("discover-context");
-    expect(result.handover.snapshot.status).toBe("completed");
-
-    const handoverDoc = await readStepHandoverDocument(
-      result.handover.filePath,
-    );
-    expect(handoverDoc.frontmatter.step_name).toBe("discover-context");
-    expect(handoverDoc.body).toContain("File Change Analysis");
   });
 
   it("classifies auth middleware as permission", async () => {
@@ -194,35 +183,6 @@ describe("runDiscoverContextFromIntake", () => {
     expect(viewpoints).toContain("ui-look-and-feel");
     expect(viewpoints).toContain("data-and-error-handling");
     expect(viewpoints).toContain("architecture-cross-cutting");
-  });
-
-  it("escapes pipe characters in file paths for handover markdown", async () => {
-    const workspace = await setupWorkspace();
-    const config = await readPluginConfig(
-      workspace.configPath,
-      workspace.manifestPath,
-    );
-    const metadata: PrMetadata = {
-      ...createSampleMetadata(),
-      changedFiles: [
-        {
-          path: "src/utils/foo|bar.ts",
-          status: "added",
-          additions: 5,
-          deletions: 0,
-          previousPath: null,
-        },
-      ],
-    };
-    const prIntake = savePrIntake(workspace.databasePath, metadata);
-
-    const result = await runDiscoverContextFromIntake(prIntake, config);
-
-    const handoverDoc = await readStepHandoverDocument(
-      result.handover.filePath,
-    );
-    expect(handoverDoc.body).toContain("foo\\|bar.ts");
-    expect(handoverDoc.body).not.toContain("| src/utils/foo|bar.ts |");
   });
 
   it("is idempotent for same PR intake", async () => {

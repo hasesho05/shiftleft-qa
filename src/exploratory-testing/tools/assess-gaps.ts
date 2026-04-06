@@ -11,14 +11,9 @@ import {
   findTestMapping,
   saveRiskAssessment,
 } from "../db/workspace-repository";
-import { escapePipe } from "../lib/markdown";
 import type { ResolvedPluginConfig } from "../models/config";
 import type { RiskAssessmentResult } from "../models/risk-assessment";
 import { readPluginConfig } from "./config";
-import {
-  type StepHandoverWriteResult,
-  writeStepHandoverFromConfig,
-} from "./progress";
 
 export type AssessGapsInput = {
   readonly prNumber: number;
@@ -30,7 +25,6 @@ export type AssessGapsInput = {
 
 export type AssessGapsResult = {
   readonly persisted: PersistedRiskAssessment;
-  readonly handover: StepHandoverWriteResult;
 };
 
 export async function runAssessGaps(
@@ -107,81 +101,6 @@ export async function runAssessGapsFromMapping(
   };
 
   const persisted = saveRiskAssessment(config.paths.database, assessmentResult);
-  const body = buildHandoverBody(persisted);
 
-  const handover = await writeStepHandoverFromConfig(config, {
-    stepName: "assess-gaps",
-    status: "completed",
-    summary: `Scored ${riskScores.length} files, selected ${frameworkSelections.length} frameworks, generated ${explorationThemes.length} themes`,
-    body,
-  });
-
-  return { persisted, handover };
-}
-
-function buildHandoverBody(assessment: PersistedRiskAssessment): string {
-  const lines = [
-    `# Risk Assessment (test_mapping_id: ${assessment.testMappingId})`,
-    "",
-  ];
-
-  // Risk Scores
-  lines.push(
-    "## Risk Scores",
-    "",
-    "| File | Overall Risk | Top Factor |",
-    "| --- | --- | --- |",
-  );
-
-  const sortedScores = [...assessment.riskScores].sort(
-    (a, b) => b.overallRisk - a.overallRisk,
-  );
-
-  for (const score of sortedScores) {
-    const topFactor =
-      score.factors.length > 0
-        ? score.factors.reduce((a, b) =>
-            a.contribution > b.contribution ? a : b,
-          ).factor
-        : "—";
-    lines.push(
-      `| ${escapePipe(score.changedFilePath)} | ${score.overallRisk} | ${topFactor} |`,
-    );
-  }
-  lines.push("");
-
-  // Framework Selections
-  lines.push(
-    "## Framework Selections",
-    "",
-    "| Framework | Priority | Reason | Files |",
-    "| --- | --- | --- | --- |",
-  );
-
-  for (const selection of assessment.frameworkSelections) {
-    const files = selection.relevantFiles.map(escapePipe).join(", ");
-    lines.push(
-      `| ${selection.framework} | ${selection.priority} | ${escapePipe(selection.reason)} | ${files} |`,
-    );
-  }
-  lines.push("");
-
-  // Exploration Themes
-  lines.push("## Exploration Themes", "");
-
-  for (const [index, theme] of assessment.explorationThemes.entries()) {
-    lines.push(
-      `### ${index + 1}. ${theme.title} [${theme.riskLevel}] (~${theme.estimatedMinutes}min)`,
-      "",
-      theme.description,
-      "",
-      `- **Frameworks**: ${theme.frameworks.join(", ")}`,
-      `- **Target files**: ${theme.targetFiles.join(", ") || "—"}`,
-      "",
-    );
-  }
-
-  lines.push("## Next step", "", "- generate-charters", "");
-
-  return lines.join("\n");
+  return { persisted };
 }

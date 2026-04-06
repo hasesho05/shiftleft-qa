@@ -11,7 +11,6 @@ export type PublishHandoffOrchestrationInput = {
   readonly provider?: string;
   readonly repository?: string;
   readonly issueNumber?: number;
-  readonly sessionId?: number;
   readonly title?: string;
   readonly labels?: readonly string[];
   readonly assignees?: readonly string[];
@@ -25,7 +24,6 @@ export type PublishHandoffOrchestrationResult = {
   readonly issueNumber: number;
   readonly issueUrl: string | undefined;
   readonly title: string;
-  readonly findingsCommentAdded: boolean;
 };
 
 export async function runPublishHandoffOrchestration(
@@ -69,7 +67,6 @@ export async function runPublishHandoffOrchestration(
   const lifecycle = await runPublishHandoffLifecycle({
     riskAssessmentId: riskAssessment.id,
     issueNumber: input.issueNumber,
-    sessionId: input.sessionId,
     title: input.title,
     labels: input.labels,
     assignees: input.assignees,
@@ -83,7 +80,6 @@ export async function runPublishHandoffOrchestration(
     issueNumber: lifecycle.issueNumber,
     issueUrl: lifecycle.issueUrl,
     title: lifecycle.title,
-    findingsCommentAdded: lifecycle.findingsCommentUrl !== undefined,
   };
 }
 

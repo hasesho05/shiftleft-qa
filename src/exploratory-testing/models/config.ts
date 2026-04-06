@@ -27,7 +27,6 @@ export const publishDefaultsSchema = schema(
     titlePrefix: v.optional(nonEmptyString()),
     labels: v.optional(v.array(nonEmptyString())),
     assignees: v.optional(v.array(nonEmptyString())),
-    findingsComment: v.optional(v.boolean()),
     mode: v.optional(publishModeSchema),
   }),
 );

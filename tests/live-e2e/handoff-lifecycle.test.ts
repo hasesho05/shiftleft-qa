@@ -1,17 +1,14 @@
 /**
- * Live E2E test: handoff publish/update/comment lifecycle.
+ * Live E2E test: handoff publish/update lifecycle.
  *
- * Validates that the final GitHub QA handoff Issue is actually created,
- * updated, and commented on via the `handoff publish`, `handoff update`,
- * and `handoff add-findings` CLI commands.
+ * Validates that the final GitHub QA handoff Issue is actually created
+ * and updated via the `handoff publish` and `handoff update` CLI commands.
  *
  * Key design decisions:
  *   - Every run creates a NEW issue with a unique timestamp in the title.
  *     This guarantees that the `handoff publish` (create) path is always
  *     exercised, not just the update path.
  *   - afterAll closes the issue to prevent accumulation in the sample repo.
- *   - add-findings verifies comment count delta (+1) and matches the
- *     returned comment URL, preventing false positives from stale comments.
  *
  * Prerequisites:
  *   - `gh auth login` with write access to the sample repository
@@ -75,37 +72,6 @@ async function fetchIssueBody(
   return parsed.body;
 }
 
-async function fetchIssueCommentCount(
-  repository: string,
-  issueNumber: number,
-): Promise<number> {
-  const result = await execa(
-    "gh",
-    ["api", `repos/${repository}/issues/${issueNumber}/comments`],
-    { timeout: 30_000, reject: true },
-  );
-
-  const comments = JSON.parse(result.stdout) as readonly unknown[];
-  return comments.length;
-}
-
-async function fetchLatestComment(
-  repository: string,
-  issueNumber: number,
-): Promise<{ body: string; html_url: string } | null> {
-  const result = await execa(
-    "gh",
-    ["api", `repos/${repository}/issues/${issueNumber}/comments`],
-    { timeout: 30_000, reject: true },
-  );
-
-  const comments = JSON.parse(result.stdout) as readonly {
-    body: string;
-    html_url: string;
-  }[];
-  return comments.length > 0 ? comments[comments.length - 1] : null;
-}
-
 async function closeIssue(
   repository: string,
   issueNumber: number,
@@ -133,7 +99,6 @@ describe.skipIf(!ghAuthAvailable)(
   () => {
     let workspaceRoot = "";
     let riskAssessmentId = 0;
-    let sessionId = 0;
     let issueNumber = 0;
     let publishedIssueUrl = "";
     let initialBody = "";
@@ -161,77 +126,7 @@ describe.skipIf(!ghAuthAvailable)(
         workspaceRoot,
       );
 
-      // 3. Generate charters + session + findings for add-findings test
-      const charters = await runCli(
-        ["generate-charters", ...PR_ARGS],
-        workspaceRoot,
-      );
-      const sessionChartersId = charters.sessionChartersId as number;
-
-      const sessionStart = await runCli(
-        [
-          "session start",
-          "--session-charters-id",
-          String(sessionChartersId),
-          "--charter-index",
-          "0",
-        ],
-        workspaceRoot,
-      );
-      sessionId = sessionStart.sessionId as number;
-
-      const observe = await runCli(
-        [
-          "session observe",
-          "--session",
-          String(sessionId),
-          "--heuristic",
-          "error-guessing",
-          "--action",
-          "Submit task for approval as viewer role",
-          "--expected",
-          "Permission denied",
-          "--actual",
-          "Permission denied with clear error",
-          "--outcome",
-          "pass",
-          "--note",
-          "Role guard blocks unauthorized approval",
-        ],
-        workspaceRoot,
-      );
-
-      await runCli(
-        ["session complete", "--session", String(sessionId)],
-        workspaceRoot,
-      );
-
-      const obs1Id = observe.observationId as number;
-
-      await runCli(
-        [
-          "finding add",
-          "--session",
-          String(sessionId),
-          "--observation",
-          String(obs1Id),
-          "--type",
-          "automation-candidate",
-          "--title",
-          "Role-based approval guard is deterministic",
-          "--description",
-          "Permission check can be covered by unit test",
-          "--severity",
-          "low",
-          "--test-layer",
-          "unit",
-          "--rationale",
-          "Deterministic role check with fixed inputs",
-        ],
-        workspaceRoot,
-      );
-
-      // 4. Create a NEW issue every run (unique title with timestamp)
+      // 3. Create a NEW issue every run (unique title with timestamp)
       const runId = Date.now();
       const title = `${E2E_ISSUE_TITLE_PREFIX} QA Handoff — PR #${CANONICAL_PR_NUMBER} (run ${runId})`;
       const publishResult = await runCli(
@@ -336,48 +231,9 @@ describe.skipIf(!ghAuthAvailable)(
     });
 
     // -----------------------------------------------------------------
-    // HANDOFF-5: add-findings creates exactly one new comment
+    // HANDOFF-5: error case returns machine-readable error
     // -----------------------------------------------------------------
-    it("HANDOFF-5: add-findings adds exactly one comment with findings", async () => {
-      // Record comment count BEFORE
-      const countBefore = await fetchIssueCommentCount(
-        CANONICAL_REPO,
-        issueNumber,
-      );
-
-      const result = await runCli(
-        [
-          "handoff add-findings",
-          "--issue-number",
-          String(issueNumber),
-          "--session-id",
-          String(sessionId),
-        ],
-        workspaceRoot,
-      );
-
-      const returnedUrl = String(result.commentUrl);
-      expect(returnedUrl).toContain("github.com");
-
-      // Verify count increased by exactly 1
-      const countAfter = await fetchIssueCommentCount(
-        CANONICAL_REPO,
-        issueNumber,
-      );
-      expect(countAfter).toBe(countBefore + 1);
-
-      // Verify the LATEST comment matches the returned URL and has findings
-      const latest = await fetchLatestComment(CANONICAL_REPO, issueNumber);
-      expect(latest).not.toBeNull();
-      expect(latest?.html_url).toBe(returnedUrl);
-      expect(latest?.body).toContain("Exploration Findings");
-      expect(latest?.body).toContain("automation-candidate");
-    });
-
-    // -----------------------------------------------------------------
-    // HANDOFF-6: error case returns machine-readable error
-    // -----------------------------------------------------------------
-    it("HANDOFF-6: update with non-existent issue returns error", async () => {
+    it("HANDOFF-5: update with non-existent issue returns error", async () => {
       const envelope = await runCliExpectError(
         [
           "handoff update",

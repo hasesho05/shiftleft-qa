@@ -18,10 +18,6 @@ import type {
 } from "../models/change-analysis";
 import type { ResolvedPluginConfig } from "../models/config";
 import { readPluginConfig } from "./config";
-import {
-  type StepHandoverWriteResult,
-  writeStepHandoverFromConfig,
-} from "./progress";
 
 export type DiscoverContextInput = {
   readonly prNumber: number;
@@ -33,7 +29,6 @@ export type DiscoverContextInput = {
 
 export type DiscoverContextResult = {
   readonly persisted: PersistedChangeAnalysis;
-  readonly handover: StepHandoverWriteResult;
 };
 
 export async function runDiscoverContext(
@@ -85,16 +80,8 @@ export async function runDiscoverContextFromIntake(
   };
 
   const persisted = saveChangeAnalysis(config.paths.database, analysisResult);
-  const body = buildHandoverBody(persisted);
 
-  const handover = await writeStepHandoverFromConfig(config, {
-    stepName: "discover-context",
-    status: "completed",
-    summary: `Analyzed ${fileAnalyses.length} files: ${summary}`,
-    body,
-  });
-
-  return { persisted, handover };
+  return { persisted };
 }
 
 function mergeViewpointSeeds(
@@ -150,52 +137,4 @@ function buildSummary(
   }
 
   return `${prIntake.repository}#${prIntake.prNumber}: ${fileAnalyses.length} files, categories: ${categories.join(", ")}`;
-}
-
-function buildHandoverBody(analysis: PersistedChangeAnalysis): string {
-  const lines = [
-    `# Change Analysis (pr_intake_id: ${analysis.prIntakeId})`,
-    "",
-    "## File Change Analysis",
-    "",
-    "| Path | Status | Categories | +/- |",
-    "| --- | --- | --- | --- |",
-  ];
-
-  for (const fa of analysis.fileAnalyses) {
-    const cats =
-      fa.categories.map((c) => `${c.category}(${c.confidence})`).join(", ") ||
-      "—";
-    lines.push(
-      `| ${fa.path.replace(/\|/g, "\\|")} | ${fa.status} | ${cats} | +${fa.additions} -${fa.deletions} |`,
-    );
-  }
-  lines.push("");
-
-  if (analysis.relatedCodes.length > 0) {
-    lines.push("## Related Code Candidates", "");
-    for (const rc of analysis.relatedCodes) {
-      lines.push(
-        `- **${rc.path}** (${rc.relation}, confidence: ${rc.confidence}): ${rc.reason}`,
-      );
-    }
-    lines.push("");
-  }
-
-  lines.push("## Viewpoint Seeds", "");
-  for (const vs of analysis.viewpointSeeds) {
-    lines.push(`### ${vs.viewpoint}`, "");
-    if (vs.seeds.length === 0) {
-      lines.push("- *(no seeds extracted)*", "");
-    } else {
-      for (const seed of vs.seeds) {
-        lines.push(`- ${seed}`);
-      }
-      lines.push("");
-    }
-  }
-
-  lines.push("## Next step", "", "- map-tests", "");
-
-  return lines.join("\n");
 }

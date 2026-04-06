@@ -105,7 +105,20 @@ bun run check
 - 完了後に issue number / URL を返す
 - 内部で `handoff create-issue` / `handoff update-issue` 相当の処理を行うため、通常は raw コマンドを意識する必要はない
 
+### GitLab MR ワークフロー
+
+GitLab MR を対象にする場合、`publish-handoff` の代わりに `design-handoff --output` で handoff markdown をファイルに書き出します。
+
+```bash
+bun run dev analyze-pr --pr <MR番号>
+bun run dev design-handoff --pr <MR番号> --output qa-handoff.md
+```
+
+生成された `qa-handoff.md` を MR description にコピーするか、チームの QA チャネルに共有してください。
+
 ### Claude Code での開始例
+
+GitHub PR の場合:
 
 ```text
 /capabilities
@@ -113,6 +126,16 @@ bun run check
 /design-handoff
 /publish-handoff
 ```
+
+GitLab MR の場合:
+
+```text
+/capabilities
+/analyze-pr
+/design-handoff
+```
+
+`design-handoff` の結果を確認後、`--output` で Markdown ファイルとして保存します。
 
 ## スキル
 
@@ -194,10 +217,13 @@ bun run dev db init
 # Plugin manifest 確認
 bun run dev manifest show
 
-# 3-skill public flow
+# 3-skill public flow (GitHub PR)
 bun run dev analyze-pr --pr <number>
 bun run dev design-handoff --pr <number>
 bun run dev publish-handoff --pr <number>
+
+# GitLab MR の場合: publish-handoff の代わりに markdown ファイル出力
+bun run dev design-handoff --pr <number> --output qa-handoff.md
 
 # 低レベル GitHub Issue 操作
 # publish-handoff が内部で使う raw ops。通常は直接呼ぶ必要はない。

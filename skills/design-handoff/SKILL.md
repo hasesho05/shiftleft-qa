@@ -32,6 +32,9 @@ CLI:
 
 ```bash
 bun run dev design-handoff --pr <number>
+
+# GitLab MR などで markdown ファイルとして書き出す場合:
+bun run dev design-handoff --pr <number> --output qa-handoff.md
 ```
 
 ## 会話テンプレート

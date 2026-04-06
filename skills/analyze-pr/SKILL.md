@@ -14,14 +14,13 @@ PR を読んで、次の handoff 設計に必要な事実をまとめる。
 - changed files
 - 既存テストと layer applicability
 
-この skill は、旧 `pr-intake` / `discover-context` / `map-tests` をまたぐ coarse-grained entrypoint として扱う。必要なら `assess-gaps` の一部まで吸収してよい。
+この skill は、内部的に pr-intake / discover-context / map-tests / assess-gaps を順に実行し、結果を統合する。
 
 ## デフォルトの考え方
 
-- v3 では `PR -> test understanding -> manual test design -> QA issue handoff` を主フローとして扱う。
-- 現在の実装は内部的に `pr-intake` / `discover-context` / `map-tests` / `assess-gaps` を使ってよい。
-- `setup` と local DB / progress files は、現行実装では必要なことがあるが、user-facing には主語にしない。
-- ユーザーには individual step 名ではなく、「PR と既存テストを理解する skill」として見せる。
+- `PR -> test understanding -> manual test design -> QA issue handoff` が主フロー。
+- ユーザーには内部 step 名ではなく、「PR と既存テストを理解する skill」として見せる。
+- local DB は resumable cache として使い、user-facing の主語にしない。
 - 先に CLI / GitHub / diff / issue から取れる事実を集め、それでも不足する文脈だけを `AskUserQuestion` で確認する。
 
 ## 実行手順

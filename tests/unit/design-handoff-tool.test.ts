@@ -83,6 +83,23 @@ describe("runDesignHandoff", () => {
     expect("testMappingId" in result).toBe(false);
   });
 
+  it("draft.markdown contains handoff sections suitable for file output", async () => {
+    const workspace = await setupWorkspace();
+    populateFullAnalysisChain(workspace.databasePath);
+
+    const result = await runDesignHandoff({
+      prNumber: 42,
+      configPath: workspace.configPath,
+      manifestPath: workspace.manifestPath,
+    });
+
+    // The markdown should be a complete handoff document
+    expect(result.draft.markdown).toContain("Already Covered");
+    expect(result.draft.markdown).toContain("Should Automate");
+    expect(result.draft.markdown).toContain("Manual Exploration Required");
+    expect(result.draft.markdown).toContain("#42");
+  });
+
   it("throws when no analysis exists for the PR", async () => {
     const workspace = await setupWorkspace();
 

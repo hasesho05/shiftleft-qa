@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import { cac } from "cac";
@@ -29,6 +29,7 @@ type PrPipelineCommandOptions = WorkspaceCommandOptions & {
   readonly pr?: number;
   readonly provider?: string;
   readonly repository?: string;
+  readonly output?: string;
 };
 
 type PublishHandoffCommandOptions = WorkspaceCommandOptions & {
@@ -314,6 +315,7 @@ cli
   .option("--pr <prNumber>", "PR または MR 番号")
   .option("--provider <provider>", "SCM プロバイダ (省略時は DB から解決)")
   .option("--repository <repository>", "リポジトリ (省略時は DB から解決)")
+  .option("--output <outputPath>", "handoff markdown をファイルに書き出す")
   .action(
     createEnvelopeAction(async (options: PrPipelineCommandOptions) => {
       if (!options.pr) {
@@ -328,6 +330,10 @@ cli
         manifestPath: options.manifest,
       });
 
+      if (options.output) {
+        await writeFile(options.output, result.draft.markdown, "utf8");
+      }
+
       return {
         prNumber: result.prNumber,
         repository: result.repository,
@@ -336,6 +342,7 @@ cli
         manualExploration: result.draft.manualExploration,
         counts: result.counts,
         summary: result.summary,
+        ...(options.output ? { outputPath: options.output } : {}),
       };
     }),
   );

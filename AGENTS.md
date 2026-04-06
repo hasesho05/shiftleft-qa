@@ -91,25 +91,24 @@ Skill Layer (skills/*/SKILL.md)
 
 高度で再現性の高い処理は CLI 側に寄せ、Skill は呼び出しと制御に徹する。
 
-### ワークフロー（11ステップの線形ステートマシン）
+### Public Flow
 
 ```
-setup → pr-intake → discover-context → map-tests → assess-gaps
-  → allocate → handoff → generate-charters → run-session
-  → triage-findings → export-artifacts
+analyze-pr → design-handoff → publish-handoff
 ```
 
-各ステップは `src/exploratory-testing/config/workflow.ts` の `WORKFLOW_SKILLS` で定義。
-Progress ファイルは `NN-<step>.md` の命名規則で、前ステップの引き継ぎを次ステップが読む。
+内部的に analyze-pr は pr-intake / discover-context / map-tests / assess-gaps を順に実行する。
+design-handoff は allocate / handoff generate を実行する。
+publish-handoff は GitHub Issue を create / update する。
 
 ### ソースコードの構成
 
 - `src/exploratory-testing/cli/index.ts` — CLI エントリポイント（`cac` ベース）
-- `src/exploratory-testing/models/` — Valibot スキーマと型定義（config, progress, plugin-manifest）
+- `src/exploratory-testing/models/` — Valibot スキーマと型定義（config, plugin-manifest, allocation 等）
 - `src/exploratory-testing/db/` — SQLite スキーマと repository（`bun:sqlite` 使用）
-- `src/exploratory-testing/tools/` — CLI サブコマンドの実装（setup, progress, doctor, config, manifest）
-- `src/exploratory-testing/config/workflow.ts` — ワークフローステップ定義
-- `skills/` — 各ステップの SKILL.md（Claude Code / Codex Plugin として読まれる）
+- `src/exploratory-testing/tools/` — CLI サブコマンドとドメインロジック（analyze-pr, design-handoff, publish-handoff, doctor, config, manifest 等）
+- `src/exploratory-testing/analysis/` — 分析ロジック（risk score, framework selection, coverage gap 等）
+- `skills/` — 各 skill の SKILL.md（Claude Code Plugin として読まれる）
 - `.claude-plugin/plugin.json` — Plugin マニフェスト
 
 ### bun:sqlite と Vitest の共存
@@ -211,18 +210,14 @@ git checkout -b issue-<number>-<short-slug>
 
 ## 現在の基盤状態
 
-Workflow v2 マージ後の現状:
+Issue #79 で legacy workflow surface 除去後の現状:
 
+- Public flow: `analyze-pr` → `design-handoff` → `publish-handoff`
 - `config.json` のスキーマと相対パス解決が実装済み
-- `setup` / `db init` / `progress summary` / `progress handover` の CLI が存在
-- SQLite 初期化、WAL、`foreign_keys` 有効化が実装済み
-- workspace 初期化は冪等
-- 11-step workflow (`setup` → `export-artifacts`) が `workflow.ts` / progress / skills に反映済み
-- `allocate` CLI / repository / model / DB schema が実装済み
-- `handoff generate / publish / update / add-findings` が実装済み
-- `generate-charters` は allocation の `manual-exploration` items を入力にする
-- GitHub Issue を shared handoff の正本として扱う v2 運用へ移行済み
-- Issue `#75` で stateless-first な user-facing surface への再編を開始
+- `db init` CLI で SQLite 初期化（WAL、`foreign_keys` 有効）
+- GitHub Issue を shared handoff の正本として扱う
+- local DB は resumable cache として位置づけ
+- legacy 11-step workflow, optional features (charters/session/findings/export) は除去済み
 
 ## Known Pitfalls
 

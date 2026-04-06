@@ -333,15 +333,10 @@ plugin-root/
 ├── .claude-plugin/
 │   └── plugin.json
 ├── skills/
-│   ├── setup/
-│   ├── pr-intake/
-│   ├── discover-context/
-│   ├── map-tests/
-│   ├── assess-gaps/
-│   ├── generate-charters/
-│   ├── run-session/
-│   ├── triage-findings/
-│   └── export-artifacts/
+│   ├── capabilities/
+│   ├── analyze-pr/
+│   ├── design-handoff/
+│   └── publish-handoff/
 ├── src/
 │   └── exploratory-testing/
 │       ├── cli/

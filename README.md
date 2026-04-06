@@ -102,7 +102,8 @@ bun run check
 - publish 前に title / target issue / scope を `AskUserQuestion` で確認してよい
 - `config.json` の `publishDefaults` に target repository / title prefix / labels などがあれば既定値として使う
 - 空の項目は skill 実行時に `AskUserQuestion` で確認する
-- 完了後に結果を返す
+- 完了後に issue number / URL を返す
+- 内部で `handoff create-issue` / `handoff update-issue` 相当の処理を行うため、通常は raw コマンドを意識する必要はない
 
 ### Claude Code での開始例
 
@@ -181,6 +182,7 @@ Local SQLite DB | resumable state / cache
 
 - CLI 境界で相対パスを絶対パスに解決する
 - `publishDefaults` は publish-handoff の既定値であり、空の項目は skill 実行時に補完する想定
+- `paths.progressDirectory` / `paths.artifactsDirectory` は実装内部のキャッシュパスであり、user-facing の重要設定ではない
 - secrets は `config.json` に入れない
 - GitHub 認証は raw token より `gh auth` を優先する
 
@@ -201,7 +203,9 @@ bun run dev analyze-pr --pr <number>
 bun run dev design-handoff --pr <number>
 bun run dev publish-handoff --pr <number>
 
-# Handoff 操作（低レベル GitHub Issue 操作）
+# 低レベル GitHub Issue 操作
+# publish-handoff が内部で使う raw ops。通常は直接呼ぶ必要はない。
+# カスタム body で Issue を操作したい場合や、スクリプトから直接呼びたい場合に使う。
 bun run dev handoff create-issue --repository <owner/repo> --title <title> --body <markdown>
 bun run dev handoff update-issue --repository <owner/repo> --issue-number <number> --body <markdown>
 bun run dev handoff add-comment --repository <owner/repo> --issue-number <number> --body <markdown>

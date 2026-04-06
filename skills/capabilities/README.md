@@ -11,4 +11,4 @@
 - `analyze-pr` → `design-handoff` → `publish-handoff` が public flow であると案内する
 - CLI は裏方で、public skill が対話と判断の主役だと共有する
 
-`setup` は残っていても、通常利用の最初の入口としては扱わない。
+通常利用は `analyze-pr` から始める。

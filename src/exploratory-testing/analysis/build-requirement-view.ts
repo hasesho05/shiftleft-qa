@@ -193,6 +193,7 @@ function deriveRequirements(
     const automationCandidates = findAutomationCandidates(
       sourceFiles,
       allocationItems,
+      testAssets,
     );
     return {
       requirement: req,
@@ -352,17 +353,7 @@ function matchSourceFiles(
     );
   });
 
-  if (matched.length > 0) {
-    return matched;
-  }
-
-  // No strong path-token match — fall back to product changed files (capped)
-  // so that generic acceptance criteria still get 関連テスト and 根拠ソース
-  // via downstream lookups, without flooding the output.
-  const MAX_FALLBACK_SOURCE_FILES = 10;
-  return changedFilePaths
-    .filter((p) => !isInfraConfig(p))
-    .slice(0, MAX_FALLBACK_SOURCE_FILES);
+  return matched;
 }
 
 function findRelatedTests(
@@ -402,6 +393,7 @@ function findRelatedTests(
 function findAutomationCandidates(
   sourceFiles: readonly string[],
   allocationItems: readonly PersistedAllocationItem[],
+  testAssets: readonly TestAsset[],
 ): readonly string[] {
   const sourceSet = new Set(sourceFiles);
   const automationDestinations = new Set([
@@ -413,10 +405,28 @@ function findAutomationCandidates(
   const candidates: string[] = [];
 
   for (const item of allocationItems) {
+    if (!automationDestinations.has(item.recommendedDestination)) {
+      continue;
+    }
     if (
-      automationDestinations.has(item.recommendedDestination) &&
-      item.changedFilePaths.some((p) => sourceSet.has(p))
+      sourceFiles.length > 0 &&
+      !item.changedFilePaths.some((p) => sourceSet.has(p))
     ) {
+      continue;
+    }
+
+    // Find test asset paths related to this allocation item's source files
+    const itemSourceSet = new Set(item.changedFilePaths);
+    const relatedTestPaths = testAssets
+      .filter((a) => a.relatedTo.some((rel) => itemSourceSet.has(rel)))
+      .map((a) => a.path);
+
+    if (relatedTestPaths.length > 0) {
+      for (const testPath of relatedTestPaths) {
+        candidates.push(testPath);
+      }
+    } else {
+      // No test asset found — show the destination + source as a hint
       candidates.push(
         `${item.recommendedDestination}: ${item.changedFilePaths[0]}`,
       );

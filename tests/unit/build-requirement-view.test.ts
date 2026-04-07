@@ -193,7 +193,7 @@ describe("buildHandoffViewModel", () => {
     );
   });
 
-  it("attaches relatedTests via sourceFiles fallback for generic criteria", () => {
+  it("does not inflate sourceFiles for generic criteria that have no path match", () => {
     const vm = buildHandoffViewModel({
       intentContext: makeIntentContext({
         acceptanceCriteria: ["アーカイブ一覧が表示されること"],
@@ -204,13 +204,10 @@ describe("buildHandoffViewModel", () => {
       prIntake: makePrIntake(),
     });
 
-    // Generic criterion should still get related tests through fallback
+    // Generic criterion has no path-token match, so sourceFiles should be empty
+    // rather than containing all product files (which caused verbosity)
     expect(vm.requirements).toHaveLength(1);
-    expect(vm.requirements[0].sourceFiles.length).toBeGreaterThan(0);
-    expect(vm.requirements[0].relatedTests.length).toBeGreaterThan(0);
-    expect(vm.requirements[0].relatedTests).toContain(
-      "tests/unit/ConcertList.test.tsx",
-    );
+    expect(vm.requirements[0].sourceFiles).toHaveLength(0);
   });
 
   it("includes uncategorized product files in mixed PRs", () => {

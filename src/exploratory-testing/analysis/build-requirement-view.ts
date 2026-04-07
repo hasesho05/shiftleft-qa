@@ -11,7 +11,7 @@ import type {
 import type { IntentContext } from "../models/intent-context";
 import type { TestAsset } from "../models/test-mapping";
 import { groupAllocationItems } from "./group-allocation-items";
-import { isInfraConfig } from "./is-product-relevant";
+import { isInfraConfig, isNonProductNoise } from "./is-product-relevant";
 
 export type RequirementViewItem = {
   readonly requirement: string;
@@ -48,18 +48,24 @@ export function buildHandoffViewModel(input: {
     prIntake,
   } = input;
 
-  const changedFilePaths = prIntake.changedFiles.map((file) => file.path);
+  const productFileAnalyses = changeAnalysis.fileAnalyses.filter(
+    (fa) => !isNonProductNoise(fa.path),
+  );
+  const productChangedFilePaths = prIntake.changedFiles
+    .filter((file) => !isNonProductNoise(file.path))
+    .map((file) => file.path);
+
   const requirements = deriveRequirements(
     intentContext,
-    changeAnalysis.fileAnalyses,
-    changedFilePaths,
+    productFileAnalyses,
+    productChangedFilePaths,
     testMapping.testAssets,
     allocationItems,
   );
   const testLayers = deriveDisplayTestLayers({
     testAssets: testMapping.testAssets,
     allocationItems,
-    fileAnalyses: changeAnalysis.fileAnalyses,
+    fileAnalyses: productFileAnalyses,
   });
   const grouped = groupAllocationItems(allocationItems);
   const manualChecks = deriveManualChecks(grouped);
@@ -312,7 +318,7 @@ function matchSourceFiles(
     const pathParts = path.toLowerCase().split("/");
     return pathParts.some(
       (part) =>
-        reqLower.includes(part.replace(/\.[^.]+$/, "")) && part.length > 3,
+        reqLower.includes(part.replace(/\.[^.]+$/, "")) && part.length >= 3,
     );
   });
 
@@ -320,8 +326,8 @@ function matchSourceFiles(
     return matched;
   }
 
-  // Fallback: return all product changed files
-  return changedFilePaths.filter((p) => !isInfraConfig(p));
+  // No strong match found — omit source files rather than flooding with all files
+  return [];
 }
 
 function findRelatedTests(

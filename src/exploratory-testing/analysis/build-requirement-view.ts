@@ -111,9 +111,12 @@ const DISPLAY_LAYER_MAP: readonly TestLayerDef[] = [
   {
     label: "サービステスト",
     check: (input) =>
-      input.fileCategories.has("api") ||
-      input.fileCategories.has("cross-service") ||
-      input.fileCategories.has("async"),
+      // Only show when integration layer is NOT already active (fallback role)
+      !input.allocationDestinations.has("integration") &&
+      !input.testAssetLayers.has("api") &&
+      (input.fileCategories.has("api") ||
+        input.fileCategories.has("cross-service") ||
+        input.fileCategories.has("async")),
     assetLayers: [],
   },
   {
@@ -273,8 +276,9 @@ function deriveRequirementsFromFiles(
     (p) => !categorizedPaths.has(p) && !isInfraConfig(p),
   );
   if (uncategorized.length > 0) {
-    for (const path of uncategorized.slice(0, 5)) {
-      requirements.push(`${deriveHumanReadableDir(path)} の変更確認`);
+    const dirs = new Set(uncategorized.map((p) => deriveHumanReadableDir(p)));
+    for (const dir of dirs) {
+      requirements.push(`${dir} の変更確認`);
     }
   }
 
@@ -337,11 +341,14 @@ function matchSourceFiles(
   changedFilePaths: readonly string[],
 ): readonly string[] {
   const reqLower = requirement.toLowerCase();
+  const commonPrefixes = new Set(["src", "app", "lib", "."]);
   const matched = changedFilePaths.filter((path) => {
     const pathParts = path.toLowerCase().split("/");
     return pathParts.some(
       (part) =>
-        reqLower.includes(part.replace(/\.[^.]+$/, "")) && part.length >= 3,
+        !commonPrefixes.has(part) &&
+        reqLower.includes(part.replace(/\.[^.]+$/, "")) &&
+        part.length >= 3,
     );
   });
 
@@ -349,10 +356,13 @@ function matchSourceFiles(
     return matched;
   }
 
-  // No strong path-token match — fall back to all product changed files so that
-  // generic acceptance criteria (e.g. "アーカイブ一覧が表示されること") still
-  // get 関連テスト and 根拠ソース via downstream lookups.
-  return changedFilePaths.filter((p) => !isInfraConfig(p));
+  // No strong path-token match — fall back to product changed files (capped)
+  // so that generic acceptance criteria still get 関連テスト and 根拠ソース
+  // via downstream lookups, without flooding the output.
+  const MAX_FALLBACK_SOURCE_FILES = 10;
+  return changedFilePaths
+    .filter((p) => !isInfraConfig(p))
+    .slice(0, MAX_FALLBACK_SOURCE_FILES);
 }
 
 function findRelatedTests(

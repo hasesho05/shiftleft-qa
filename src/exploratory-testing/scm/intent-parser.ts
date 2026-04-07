@@ -13,21 +13,63 @@ type SectionKey =
   | "notesForQa";
 
 const SECTION_HEADING_MAP: ReadonlyMap<string, SectionKey> = new Map([
+  // Purpose / context
   ["purpose", "purpose"],
   ["目的", "purpose"],
+  ["what", "purpose"],
+  ["why", "purpose"],
+  ["changes", "purpose"],
+  ["summary", "purpose"],
+  ["description", "purpose"],
+  ["overview", "purpose"],
+  ["motivation", "purpose"],
+  ["context", "purpose"],
+  ["background", "purpose"],
+  ["what changed", "purpose"],
+  ["what's changed", "purpose"],
+  ["scope", "purpose"],
+  ["背景", "purpose"],
+  ["概要", "purpose"],
+  ["変更内容", "purpose"],
+  ["変更概要", "purpose"],
+  ["何をしたか", "purpose"],
+  ["なぜこの変更が必要か", "purpose"],
+
+  // User story
   ["user story", "userStory"],
   ["ユーザーストーリー", "userStory"],
+
+  // Acceptance criteria
   ["acceptance criteria", "acceptanceCriteria"],
   ["達成要件", "acceptanceCriteria"],
   ["done when", "acceptanceCriteria"],
+  ["requirements", "acceptanceCriteria"],
+  ["definition of done", "acceptanceCriteria"],
+  ["checklist", "acceptanceCriteria"],
+  ["受け入れ条件", "acceptanceCriteria"],
+  ["完了条件", "acceptanceCriteria"],
+
+  // Non-goals
   ["non-goals", "nonGoals"],
   ["non goals", "nonGoals"],
   ["非目標", "nonGoals"],
+  ["out of scope", "nonGoals"],
+  ["対象外", "nonGoals"],
+
+  // Target users
   ["target users", "targetUsers"],
   ["想定ユーザー", "targetUsers"],
+
+  // QA notes
   ["qa notes", "notesForQa"],
   ["テスト観点", "notesForQa"],
   ["確認観点", "notesForQa"],
+  ["test plan", "notesForQa"],
+  ["testing", "notesForQa"],
+  ["how to test", "notesForQa"],
+  ["testing notes", "notesForQa"],
+  ["テスト計画", "notesForQa"],
+  ["テスト方法", "notesForQa"],
 ]);
 
 const HEADING_REGEX = /^#{2,3}\s+(.+)$/;
@@ -123,7 +165,7 @@ function parseSingleSource(source: string): ParsedSource {
   const userStoryText = sections.get("userStory");
   const userStory = userStoryText ? userStoryText.join("\n").trim() : null;
 
-  return {
+  const result: ParsedSource = {
     changePurpose,
     userStory: userStory && userStory.length > 0 ? userStory : null,
     acceptanceCriteria: extractListItems(sections.get("acceptanceCriteria")),
@@ -131,6 +173,21 @@ function parseSingleSource(source: string): ParsedSource {
     targetUsers: extractListItems(sections.get("targetUsers")),
     notesForQa: extractListItems(sections.get("notesForQa")),
   };
+
+  // If structured extraction yielded nothing, try fallback extraction
+  const hasAnyStructured =
+    result.changePurpose !== null ||
+    result.userStory !== null ||
+    result.acceptanceCriteria.length > 0 ||
+    result.nonGoals.length > 0 ||
+    result.targetUsers.length > 0 ||
+    result.notesForQa.length > 0;
+
+  if (!hasAnyStructured && lines.length > 0) {
+    return extractFallbackFromBody(lines);
+  }
+
+  return result;
 }
 
 function extractSections(
@@ -197,6 +254,56 @@ function inferChangePurpose(lines: readonly string[]): ChangePurpose | null {
   return null;
 }
 
+const CRITERIA_VERB_PATTERN =
+  /\b(should|must|can|verify|confirm|check|ensure|表示|動作|確認|検証|できる|される)\b/i;
+
+function extractFallbackFromBody(lines: readonly string[]): ParsedSource {
+  // First non-empty paragraph (up to first blank line or heading) as userStory
+  let userStory: string | null = null;
+  const paragraphLines: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0 && paragraphLines.length > 0) {
+      break;
+    }
+    if (HEADING_REGEX.test(trimmed)) {
+      break;
+    }
+    if (trimmed.length > 0) {
+      paragraphLines.push(trimmed);
+    }
+  }
+  if (paragraphLines.length > 0) {
+    userStory = paragraphLines.join(" ");
+  }
+
+  // Infer purpose from entire body
+  const changePurpose = inferChangePurpose(lines);
+
+  // Extract bullet items that look like acceptance criteria
+  const acceptanceCriteria: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const bulletMatch = BULLET_REGEX.exec(trimmed);
+    if (bulletMatch && CRITERIA_VERB_PATTERN.test(bulletMatch[1])) {
+      acceptanceCriteria.push(bulletMatch[1].trim());
+    }
+    const numberedMatch = NUMBERED_REGEX.exec(trimmed);
+    if (numberedMatch && CRITERIA_VERB_PATTERN.test(numberedMatch[1])) {
+      acceptanceCriteria.push(numberedMatch[1].trim());
+    }
+  }
+
+  return {
+    changePurpose,
+    userStory,
+    acceptanceCriteria,
+    nonGoals: [],
+    targetUsers: [],
+    notesForQa: [],
+  };
+}
+
 function deriveExtractionStatus(fields: {
   readonly changePurpose: ChangePurpose | null;
   readonly userStory: string | null;
@@ -213,5 +320,13 @@ function deriveExtractionStatus(fields: {
     fields.targetUsers.length > 0 ||
     fields.notesForQa.length > 0;
 
-  return hasAny ? "parsed" : "empty";
+  if (!hasAny) {
+    return "empty";
+  }
+
+  // "parsed" requires at least one of the key content fields
+  const hasKeyContent =
+    fields.userStory !== null || fields.acceptanceCriteria.length > 0;
+
+  return hasKeyContent ? "parsed" : "partial";
 }

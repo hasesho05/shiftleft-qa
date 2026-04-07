@@ -1,3 +1,5 @@
+import posixPath from "node:path/posix";
+
 import type {
   PersistedAllocationItem,
   PersistedChangeAnalysis,
@@ -25,10 +27,15 @@ export type ManualCheckItem = {
   readonly reason: string;
 };
 
+export type TestLayerDisplay = {
+  readonly label: string;
+  readonly evidence: readonly string[];
+};
+
 export type HandoffViewModel = {
   readonly title: string;
   readonly requirements: readonly RequirementViewItem[];
-  readonly testLayers: readonly string[];
+  readonly testLayers: readonly TestLayerDisplay[];
   readonly manualChecks: readonly ManualCheckItem[];
   readonly notes: readonly string[];
 };
@@ -80,28 +87,37 @@ export function buildHandoffViewModel(input: {
   };
 }
 
-const DISPLAY_LAYER_MAP: ReadonlyArray<{
+type TestLayerDef = {
   readonly label: string;
   readonly check: (input: LayerCheckInput) => boolean;
-}> = [
+  readonly assetLayers: readonly string[];
+};
+
+const DISPLAY_LAYER_MAP: readonly TestLayerDef[] = [
   {
     label: "単体テスト",
     check: (input) =>
       input.testAssetLayers.has("unit") ||
       input.allocationDestinations.has("unit"),
+    assetLayers: ["unit"],
   },
   {
     label: "統合テスト",
     check: (input) =>
       input.allocationDestinations.has("integration") ||
       input.testAssetLayers.has("api"),
+    assetLayers: ["api"],
   },
   {
     label: "サービステスト",
     check: (input) =>
-      input.fileCategories.has("api") ||
-      input.fileCategories.has("cross-service") ||
-      input.fileCategories.has("async"),
+      // Only show when integration layer is NOT already active (fallback role)
+      !input.allocationDestinations.has("integration") &&
+      !input.testAssetLayers.has("api") &&
+      (input.fileCategories.has("api") ||
+        input.fileCategories.has("cross-service") ||
+        input.fileCategories.has("async")),
+    assetLayers: [],
   },
   {
     label: "ビジュアルテスト",
@@ -109,12 +125,14 @@ const DISPLAY_LAYER_MAP: ReadonlyArray<{
       input.testAssetLayers.has("visual") ||
       input.testAssetLayers.has("storybook") ||
       input.allocationDestinations.has("visual"),
+    assetLayers: ["visual", "storybook"],
   },
   {
     label: "E2Eテスト",
     check: (input) =>
       input.testAssetLayers.has("e2e") ||
       input.allocationDestinations.has("e2e"),
+    assetLayers: ["e2e"],
   },
 ];
 
@@ -128,7 +146,7 @@ export function deriveDisplayTestLayers(input: {
   readonly testAssets: readonly TestAsset[];
   readonly allocationItems: readonly PersistedAllocationItem[];
   readonly fileAnalyses: readonly FileChangeAnalysis[];
-}): readonly string[] {
+}): readonly TestLayerDisplay[] {
   const testAssetLayers = new Set(input.testAssets.map((a) => a.layer));
   const allocationDestinations = new Set(
     input.allocationItems.map((item) => item.recommendedDestination),
@@ -144,7 +162,15 @@ export function deriveDisplayTestLayers(input: {
   };
 
   return DISPLAY_LAYER_MAP.filter((entry) => entry.check(checkInput)).map(
-    (entry) => entry.label,
+    (entry) => ({
+      label: entry.label,
+      evidence:
+        entry.assetLayers.length > 0
+          ? input.testAssets
+              .filter((a) => entry.assetLayers.includes(a.layer))
+              .map((a) => a.path)
+          : [],
+    }),
   );
 }
 
@@ -167,6 +193,7 @@ function deriveRequirements(
     const automationCandidates = findAutomationCandidates(
       sourceFiles,
       allocationItems,
+      testAssets,
     );
     return {
       requirement: req,
@@ -250,8 +277,9 @@ function deriveRequirementsFromFiles(
     (p) => !categorizedPaths.has(p) && !isInfraConfig(p),
   );
   if (uncategorized.length > 0) {
-    for (const path of uncategorized.slice(0, 5)) {
-      requirements.push(`${deriveHumanReadableDir(path)} の変更確認`);
+    const dirs = new Set(uncategorized.map((p) => deriveHumanReadableDir(p)));
+    for (const dir of dirs) {
+      requirements.push(`${dir} の変更確認`);
     }
   }
 
@@ -314,22 +342,18 @@ function matchSourceFiles(
   changedFilePaths: readonly string[],
 ): readonly string[] {
   const reqLower = requirement.toLowerCase();
+  const commonPrefixes = new Set(["src", "app", "lib", "."]);
   const matched = changedFilePaths.filter((path) => {
     const pathParts = path.toLowerCase().split("/");
     return pathParts.some(
       (part) =>
-        reqLower.includes(part.replace(/\.[^.]+$/, "")) && part.length >= 3,
+        !commonPrefixes.has(part) &&
+        reqLower.includes(part.replace(/\.[^.]+$/, "")) &&
+        part.length >= 3,
     );
   });
 
-  if (matched.length > 0) {
-    return matched;
-  }
-
-  // No strong path-token match — fall back to all product changed files so that
-  // generic acceptance criteria (e.g. "アーカイブ一覧が表示されること") still
-  // get 関連テスト and 根拠ソース via downstream lookups.
-  return changedFilePaths.filter((p) => !isInfraConfig(p));
+  return matched;
 }
 
 function findRelatedTests(
@@ -339,8 +363,26 @@ function findRelatedTests(
   const sourceSet = new Set(sourceFiles);
   const tests: string[] = [];
 
+  // Strict match: test asset's relatedTo includes a source file
   for (const asset of testAssets) {
     if (asset.relatedTo.some((rel) => sourceSet.has(rel))) {
+      tests.push(asset.path);
+    }
+  }
+
+  if (tests.length > 0) {
+    return [...new Set(tests)];
+  }
+
+  // Directory proximity fallback: find test assets in the same directory as source files
+  const sourceDirs = new Set(sourceFiles.map((f) => posixPath.dirname(f)));
+  for (const asset of testAssets) {
+    const assetDir = posixPath.dirname(asset.path);
+    // Check if asset is in the same directory or a parent test directory
+    if (
+      sourceDirs.has(assetDir) ||
+      asset.relatedTo.some((rel) => sourceDirs.has(posixPath.dirname(rel)))
+    ) {
       tests.push(asset.path);
     }
   }
@@ -351,6 +393,7 @@ function findRelatedTests(
 function findAutomationCandidates(
   sourceFiles: readonly string[],
   allocationItems: readonly PersistedAllocationItem[],
+  testAssets: readonly TestAsset[],
 ): readonly string[] {
   const sourceSet = new Set(sourceFiles);
   const automationDestinations = new Set([
@@ -362,10 +405,28 @@ function findAutomationCandidates(
   const candidates: string[] = [];
 
   for (const item of allocationItems) {
+    if (!automationDestinations.has(item.recommendedDestination)) {
+      continue;
+    }
     if (
-      automationDestinations.has(item.recommendedDestination) &&
-      item.changedFilePaths.some((p) => sourceSet.has(p))
+      sourceFiles.length > 0 &&
+      !item.changedFilePaths.some((p) => sourceSet.has(p))
     ) {
+      continue;
+    }
+
+    // Find test asset paths related to this allocation item's source files
+    const itemSourceSet = new Set(item.changedFilePaths);
+    const relatedTestPaths = testAssets
+      .filter((a) => a.relatedTo.some((rel) => itemSourceSet.has(rel)))
+      .map((a) => a.path);
+
+    if (relatedTestPaths.length > 0) {
+      for (const testPath of relatedTestPaths) {
+        candidates.push(testPath);
+      }
+    } else {
+      // No test asset found — show the destination + source as a hint
       candidates.push(
         `${item.recommendedDestination}: ${item.changedFilePaths[0]}`,
       );

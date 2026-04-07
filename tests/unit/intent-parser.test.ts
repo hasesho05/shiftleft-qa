@@ -235,10 +235,10 @@ describe("parseIntentContext", () => {
       expect(result.extractionStatus).toBe("empty");
     });
 
-    it("returns 'parsed' when at least one field is populated", () => {
+    it("returns 'partial' when only purpose is populated (no key content)", () => {
       const body = "## Purpose\nAdd feature\n";
       const result = parseIntentContext([body]);
-      expect(result.extractionStatus).toBe("parsed");
+      expect(result.extractionStatus).toBe("partial");
     });
 
     it("returns 'parsed' with full context", () => {

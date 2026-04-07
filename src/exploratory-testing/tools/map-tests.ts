@@ -70,7 +70,10 @@ export async function runMapTestsFromAnalysis(
   prIntake: PersistedPrIntake,
   config: ResolvedPluginConfig,
 ): Promise<MapTestsResult> {
-  const testAssets = findTestAssets(prIntake.changedFiles);
+  const testAssets = findTestAssets(
+    prIntake.changedFiles,
+    config.workspaceRoot,
+  );
   const productFileAnalyses = changeAnalysis.fileAnalyses.filter(
     (file) => !isNonProductNoise(file.path),
   );

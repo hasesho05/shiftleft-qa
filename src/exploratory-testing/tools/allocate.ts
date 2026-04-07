@@ -1,5 +1,8 @@
 import { deriveDirectoryPrefix } from "../analysis/group-allocation-items";
-import { isNonProductNoise } from "../analysis/is-product-relevant";
+import {
+  isLowSignalChange,
+  isNonProductNoise,
+} from "../analysis/is-product-relevant";
 import {
   type PersistedAllocationItem,
   countAllocationItemsByDestination,
@@ -406,6 +409,10 @@ function decideDestination(
   }
 
   if (riskLevel === "low" && gap.aspect === "happy-path") {
+    return "dev-box";
+  }
+
+  if (isLowSignalChange(fileAnalysis.path)) {
     return "dev-box";
   }
 

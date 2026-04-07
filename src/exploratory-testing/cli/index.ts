@@ -8,6 +8,7 @@ import { runAnalyzePr } from "../tools/analyze-pr";
 import { runDesignHandoff } from "../tools/design-handoff";
 import { createEnvironmentReport } from "../tools/doctor";
 import {
+  RENDERER_VERSION,
   runAddHandoffCommentRaw,
   runCreateHandoffIssueRaw,
   runUpdateHandoffIssueBody,
@@ -198,6 +199,8 @@ cli
         throw new Error("--body か --body-file のどちらかは必須です。");
       }
 
+      warnIfNotRendererGenerated(body);
+
       const labels = normalizeArrayOption(options.label);
       const assignees = normalizeArrayOption(options.assignee);
 
@@ -239,6 +242,8 @@ cli
       if (!body) {
         throw new Error("--body か --body-file のどちらかは必須です。");
       }
+
+      warnIfNotRendererGenerated(body);
 
       await runUpdateHandoffIssueBody({
         repositoryRoot: options.cwd ?? process.cwd(),
@@ -440,6 +445,15 @@ async function readBodyOption(
   }
 
   return inlineBody ?? null;
+}
+
+function warnIfNotRendererGenerated(body: string): void {
+  const marker = `<!-- rendererVersion: ${RENDERER_VERSION} -->`;
+  if (!body.includes(marker)) {
+    process.stderr.write(
+      `[warn] body does not contain renderer version marker (${marker}). This command is a low-level API. Use 'publish-handoff --pr <number>' for the standard publish flow.\n`,
+    );
+  }
 }
 
 function normalizeArrayOption(

@@ -95,6 +95,46 @@ export function isInfraConfig(filePath: string): boolean {
   return false;
 }
 
+/**
+ * Returns true for files that are in the analysis pipeline but have
+ * low signal for QA exploration. These should route to "dev-box"
+ * rather than "manual-exploration" in allocation.
+ *
+ * Different from isNonProductNoise (which removes from pipeline entirely).
+ */
+export function isLowSignalChange(filePath: string): boolean {
+  const base = basename(filePath);
+
+  // Type definitions
+  if (/\.d\.ts$/.test(filePath)) {
+    return true;
+  }
+
+  // Pure config (non-infra) — tooling config that doesn't affect runtime behavior
+  if (
+    /^(tailwind|postcss|babel|rollup|esbuild|stylelint)\.config\./i.test(base)
+  ) {
+    return true;
+  }
+
+  // i18n / locale / translation files
+  if (/\/(locales?|i18n|translations?|messages)\//i.test(filePath)) {
+    return true;
+  }
+
+  // Generated files
+  if (/\.generated\.(ts|js)$/.test(filePath)) {
+    return true;
+  }
+
+  // Changelog, license, and similar repo metadata
+  if (/^(CHANGELOG|LICENSE|CHANGES|AUTHORS|CONTRIBUTORS)(\.md)?$/i.test(base)) {
+    return true;
+  }
+
+  return false;
+}
+
 function isTestFile(filePath: string): boolean {
   return (
     /(^|\/)(__tests__|tests?|e2e|cypress|playwright)\//i.test(filePath) ||

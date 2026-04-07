@@ -249,7 +249,7 @@ function deriveRequirementsFromFiles(
   const uncategorized = changedFilePaths.filter(
     (p) => !categorizedPaths.has(p) && !isInfraConfig(p),
   );
-  if (uncategorized.length > 0 && requirements.length === 0) {
+  if (uncategorized.length > 0) {
     for (const path of uncategorized.slice(0, 5)) {
       requirements.push(`${deriveHumanReadableDir(path)} の変更確認`);
     }
@@ -326,8 +326,10 @@ function matchSourceFiles(
     return matched;
   }
 
-  // No strong match found — omit source files rather than flooding with all files
-  return [];
+  // No strong path-token match — fall back to all product changed files so that
+  // generic acceptance criteria (e.g. "アーカイブ一覧が表示されること") still
+  // get 関連テスト and 根拠ソース via downstream lookups.
+  return changedFilePaths.filter((p) => !isInfraConfig(p));
 }
 
 function findRelatedTests(

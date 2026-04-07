@@ -93,11 +93,10 @@ describe("runDesignHandoff", () => {
       manifestPath: workspace.manifestPath,
     });
 
-    // The markdown should be a complete handoff document
-    expect(result.draft.markdown).toContain("Already Covered");
-    expect(result.draft.markdown).toContain("Should Automate");
-    expect(result.draft.markdown).toContain("Manual Exploration Required");
-    expect(result.draft.markdown).toContain("#42");
+    // v2 format: requirement-based handoff
+    expect(result.draft.markdown).toContain("## QA Handoff");
+    expect(result.draft.markdown).toContain("### 実装要件");
+    expect(result.draft.markdown).toContain("### テストレイヤー");
   });
 
   it("throws when no analysis exists for the PR", async () => {

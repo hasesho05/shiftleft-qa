@@ -112,19 +112,31 @@ describe("AnalyzePrResult contract", () => {
       testCoverage: { assets: 0, gapEntries: 0, missingLayers: [] },
       riskHighlights: { highRiskFiles: 0, frameworks: [], themes: 0 },
       layerApplicability: {
-        unit: { layer: "unit", status: "not-primary", reason: "test" },
-        "integration-service": {
-          layer: "integration-service",
-          status: "not-primary",
-          reason: "test",
+        assessment: {
+          unit: { layer: "unit", status: "not-primary", reason: "test" },
+          "integration-service": {
+            layer: "integration-service",
+            status: "not-primary",
+            reason: "test",
+          },
+          "ui-e2e": {
+            layer: "ui-e2e",
+            status: "not-primary",
+            reason: "test",
+          },
+          visual: {
+            layer: "visual",
+            status: "not-primary",
+            reason: "test",
+          },
+          "manual-exploration": {
+            layer: "manual-exploration",
+            status: "not-primary",
+            reason: "test",
+          },
         },
-        "ui-e2e": { layer: "ui-e2e", status: "not-primary", reason: "test" },
-        visual: { layer: "visual", status: "not-primary", reason: "test" },
-        "manual-exploration": {
-          layer: "manual-exploration",
-          status: "not-primary",
-          reason: "test",
-        },
+        phase: "pre-allocation",
+        note: "test",
       },
       summary: "test",
     };

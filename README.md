@@ -96,7 +96,7 @@ bun run check
 
 `design-handoff`
 
-- `already covered` / `should automate` / `manual exploration required` を整理する
+- 実装要件 (関連テスト・根拠ソース付き) / テストレイヤー / 手動確認が必要な項目を整理する
 - handoff draft を作る
 - 不足する判断材料があれば `AskUserQuestion` で質問する
 - draft を要約する

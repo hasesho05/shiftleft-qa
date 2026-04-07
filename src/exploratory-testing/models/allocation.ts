@@ -24,6 +24,19 @@ export type AllocationDestination = v.InferOutput<
   typeof allocationDestinationSchema
 >;
 
+export const manualExplorationDetailSchema = schema(
+  v.object({
+    targetSurface: v.string(),
+    whyManual: v.string(),
+    whatToObserve: v.string(),
+    likelyFailureMode: v.string(),
+  }),
+);
+
+export type ManualExplorationDetail = v.InferOutput<
+  typeof manualExplorationDetailSchema
+>;
+
 export const allocationSourceSignalsSchema = schema(
   v.object({
     categories: v.array(changeCategorySchema),
@@ -37,6 +50,7 @@ export const allocationSourceSignalsSchema = schema(
     ),
     openQuestions: v.optional(v.array(v.string())),
     manualRemainder: v.optional(v.string()),
+    manualExplorationDetail: v.optional(manualExplorationDetailSchema),
   }),
 );
 

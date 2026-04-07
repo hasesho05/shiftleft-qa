@@ -85,10 +85,10 @@ bun run dev design-handoff --pr <number> --output qa-handoff.md --repository-roo
 
 ## 完了条件
 
-- `Already Covered` / `Should Automate` / `Manual Exploration Required` の分離が妥当であること。
-- `Layer Applicability` が `primary` / `secondary` / `not-primary` / `no-product-change` を保守的に表現していること。
+- `実装要件` セクションが acceptance criteria / userStory / changed files から導出され、各要件に `関連テスト` / `根拠ソース` が紐付いていること。
+- `テストレイヤー` が test assets と allocation destinations から導出された日本語表示 (単体テスト / 統合テスト / サービステスト / ビジュアルテスト / E2Eテスト) であること。
+- `手動確認が必要な項目` が実行可能な粒度に収まっていること。
 - manual exploration が広がりすぎていないこと。
-- manual exploration のテーマが、そのまま QA 担当者の実行単位として使える粒度であること。
 - 次の skill に進む前に、`AskUserQuestion` でユーザー確認が取れていること。
 
 ## 次の Step

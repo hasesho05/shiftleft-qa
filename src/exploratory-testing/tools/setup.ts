@@ -4,6 +4,7 @@ import {
   getDatabasePragmas,
   initializeWorkspaceDatabase,
   saveWorkspaceState,
+  verifyDatabaseTables,
 } from "../db/workspace-repository";
 import type { ResolvedPluginConfig } from "../models/config";
 import {
@@ -17,6 +18,8 @@ export type DatabaseInitializationResult = {
   readonly config: ResolvedPluginConfig;
   readonly createdConfig: boolean;
   readonly databasePath: string;
+  readonly workspaceRoot: string;
+  readonly verifiedTables: readonly string[];
   readonly journalMode: string;
   readonly foreignKeys: number;
 };
@@ -69,12 +72,22 @@ async function initializeDatabaseFromEnsuredConfig(
     defaultLanguage: ensured.config.defaultLanguage,
   });
 
+  const verification = verifyDatabaseTables(ensured.config.paths.database);
+
+  if (verification.missingTables.length > 0) {
+    throw new Error(
+      `Database initialization incomplete: missing tables [${verification.missingTables.join(", ")}] in ${ensured.config.paths.database}`,
+    );
+  }
+
   const pragmas = getDatabasePragmas(ensured.config.paths.database);
 
   return {
     config: ensured.config,
     createdConfig: ensured.created,
     databasePath: ensured.config.paths.database,
+    workspaceRoot: ensured.config.workspaceRoot,
+    verifiedTables: verification.verifiedTables,
     journalMode: pragmas.journalMode,
     foreignKeys: pragmas.foreignKeys,
   };

@@ -31,7 +31,7 @@ PR を読んで、次の handoff 設計に必要な事実をまとめる。
    - 内部で PR 取得 → 変更分析 → テスト対応付け → リスク評価を順に実行し、結果を統合する。
    - `config.json` と local DB がなければ自動初期化する。
    - 返却 JSON に internal ID は含まれない。
-3. 返却 JSON から intent context / changed files / test coverage / risk highlights / layer applicability を読み取る。
+3. 返却 JSON から intent context / changed files / test coverage / risk highlights / layer applicability を読み取る。layer applicability は `{ assessment, phase: "pre-allocation", note }` の形式で、allocation 前の暫定評価であることが明示されている。
 4. 事実だけでは intent や acceptance criteria が足りない場合は、`AskUserQuestion` で不足文脈を確認する。
 5. 整理結果を要約する。
 6. `AskUserQuestion` で `design-handoff` に進んでよいか確認する。

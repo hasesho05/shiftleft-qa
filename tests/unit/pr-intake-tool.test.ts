@@ -119,7 +119,7 @@ describe("savePrIntakeResult", () => {
     expect(dbContext?.changePurpose).toBe("feature");
   });
 
-  it("saves empty intent context when no structured sections exist", async () => {
+  it("extracts fallback intent context from unstructured body", async () => {
     const workspace = await setupWorkspace();
     const metadata: PrMetadata = {
       ...createSampleMetadata(),
@@ -129,8 +129,11 @@ describe("savePrIntakeResult", () => {
     const result = savePrIntakeResult(metadata, workspace.databasePath);
 
     expect(result.intentContext).not.toBeNull();
-    expect(result.intentContext?.extractionStatus).toBe("empty");
-    expect(result.intentContext?.changePurpose).toBeNull();
+    // Fallback extraction picks up the first paragraph as userStory
+    expect(result.intentContext?.extractionStatus).toBe("parsed");
+    expect(result.intentContext?.userStory).toBe(
+      "Just a plain description with no sections",
+    );
   });
 
   it("is idempotent for same PR", async () => {

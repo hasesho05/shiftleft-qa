@@ -81,6 +81,15 @@ describe("runMapTestsFromAnalysis", () => {
       workspace.configPath,
       workspace.manifestPath,
     );
+
+    // Create candidate test files so they survive existence check
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(`${workspace.root}/src/middleware`, { recursive: true });
+    writeFileSync(
+      `${workspace.root}/src/middleware/auth.test.ts`,
+      "// test stub",
+    );
+
     const prIntake = savePrIntake(workspace.databasePath, metadata);
     const contextResult = await runDiscoverContextFromIntake(prIntake, config);
 

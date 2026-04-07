@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import posixPath from "node:path/posix";
 
 import type { ChangedFile } from "../models/pr-intake";
@@ -24,6 +26,7 @@ function makeAsset(
 
 export function findTestAssets(
   changedFiles: readonly ChangedFile[],
+  workspaceRoot: string | null = null,
 ): readonly TestAsset[] {
   const assetsMap = new Map<string, TestAsset>();
 
@@ -45,7 +48,18 @@ export function findTestAssets(
     }
   }
 
-  return [...assetsMap.values()];
+  if (workspaceRoot === null) {
+    return [...assetsMap.values()];
+  }
+
+  // Filter out candidates whose files do not exist on disk
+  const verified: TestAsset[] = [];
+  for (const asset of assetsMap.values()) {
+    if (existsSync(join(workspaceRoot, asset.path))) {
+      verified.push(asset);
+    }
+  }
+  return verified;
 }
 
 function mergeRelatedTo(

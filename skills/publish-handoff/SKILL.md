@@ -20,6 +20,12 @@ QA handoff を GitHub Issue として publish / update し、shared source of tr
 - 質問は、config と draft から埋まらない項目だけに絞り、`AskUserQuestion` を使う。
 - この「不足項目を `AskUserQuestion` で確認する」振る舞いは skill contract の責務であり、CLI 単体の実装はまだ追従途中である。
 
+## 禁止事項
+
+- **独自 markdown の組み立て禁止**: handoff body を skill 側で手書き・独自構成してはならない。handoff markdown は必ず CLI の `renderHandoffMarkdownV2()` が生成する。`handoff create-issue --body` や `handoff update-issue --body` は内部低レベル API であり、skill からは使わない。
+- **publish 経路の逸脱禁止**: publish は必ず `bun run dev publish-handoff --pr <number>` を使う。`gh issue create` 等で直接 Issue を作成しない。CLI を経由しないと、renderer version marker が付かず、形式の一貫性が崩れる。
+- **handoff format の改変禁止**: CLI が出力する 4 セクション構成 (実装要件 / テストレイヤー / 手動確認が必要な項目 / 備考) を skill 側で加工・再構成しない。
+
 ## 実行手順
 
 1. publish 前に title / target issue / scope が不明なら、`AskUserQuestion` で確認する。
@@ -82,3 +88,5 @@ bun run dev publish-handoff --pr <number> --issue-number <number> --repository-r
 
 - GitHub Issue が最新の QA handoff を表している。
 - body に実装要件 (関連テスト・根拠ソース付き)、テストレイヤー、手動確認が必要な項目、備考が含まれている。
+- body 先頭に `<!-- rendererVersion: v2 -->` マーカーが含まれている（CLI renderer 経由の証跡）。
+- skill が独自に markdown を組み立てていない。

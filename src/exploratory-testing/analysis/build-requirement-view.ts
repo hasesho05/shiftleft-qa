@@ -1,3 +1,5 @@
+import posixPath from "node:path/posix";
+
 import type {
   PersistedAllocationItem,
   PersistedChangeAnalysis,
@@ -25,10 +27,15 @@ export type ManualCheckItem = {
   readonly reason: string;
 };
 
+export type TestLayerDisplay = {
+  readonly label: string;
+  readonly evidence: readonly string[];
+};
+
 export type HandoffViewModel = {
   readonly title: string;
   readonly requirements: readonly RequirementViewItem[];
-  readonly testLayers: readonly string[];
+  readonly testLayers: readonly TestLayerDisplay[];
   readonly manualChecks: readonly ManualCheckItem[];
   readonly notes: readonly string[];
 };
@@ -80,21 +87,26 @@ export function buildHandoffViewModel(input: {
   };
 }
 
-const DISPLAY_LAYER_MAP: ReadonlyArray<{
+type TestLayerDef = {
   readonly label: string;
   readonly check: (input: LayerCheckInput) => boolean;
-}> = [
+  readonly assetLayers: readonly string[];
+};
+
+const DISPLAY_LAYER_MAP: readonly TestLayerDef[] = [
   {
     label: "単体テスト",
     check: (input) =>
       input.testAssetLayers.has("unit") ||
       input.allocationDestinations.has("unit"),
+    assetLayers: ["unit"],
   },
   {
     label: "統合テスト",
     check: (input) =>
       input.allocationDestinations.has("integration") ||
       input.testAssetLayers.has("api"),
+    assetLayers: ["api"],
   },
   {
     label: "サービステスト",
@@ -102,6 +114,7 @@ const DISPLAY_LAYER_MAP: ReadonlyArray<{
       input.fileCategories.has("api") ||
       input.fileCategories.has("cross-service") ||
       input.fileCategories.has("async"),
+    assetLayers: [],
   },
   {
     label: "ビジュアルテスト",
@@ -109,12 +122,14 @@ const DISPLAY_LAYER_MAP: ReadonlyArray<{
       input.testAssetLayers.has("visual") ||
       input.testAssetLayers.has("storybook") ||
       input.allocationDestinations.has("visual"),
+    assetLayers: ["visual", "storybook"],
   },
   {
     label: "E2Eテスト",
     check: (input) =>
       input.testAssetLayers.has("e2e") ||
       input.allocationDestinations.has("e2e"),
+    assetLayers: ["e2e"],
   },
 ];
 
@@ -128,7 +143,7 @@ export function deriveDisplayTestLayers(input: {
   readonly testAssets: readonly TestAsset[];
   readonly allocationItems: readonly PersistedAllocationItem[];
   readonly fileAnalyses: readonly FileChangeAnalysis[];
-}): readonly string[] {
+}): readonly TestLayerDisplay[] {
   const testAssetLayers = new Set(input.testAssets.map((a) => a.layer));
   const allocationDestinations = new Set(
     input.allocationItems.map((item) => item.recommendedDestination),
@@ -144,7 +159,15 @@ export function deriveDisplayTestLayers(input: {
   };
 
   return DISPLAY_LAYER_MAP.filter((entry) => entry.check(checkInput)).map(
-    (entry) => entry.label,
+    (entry) => ({
+      label: entry.label,
+      evidence:
+        entry.assetLayers.length > 0
+          ? input.testAssets
+              .filter((a) => entry.assetLayers.includes(a.layer))
+              .map((a) => a.path)
+          : [],
+    }),
   );
 }
 
@@ -339,8 +362,26 @@ function findRelatedTests(
   const sourceSet = new Set(sourceFiles);
   const tests: string[] = [];
 
+  // Strict match: test asset's relatedTo includes a source file
   for (const asset of testAssets) {
     if (asset.relatedTo.some((rel) => sourceSet.has(rel))) {
+      tests.push(asset.path);
+    }
+  }
+
+  if (tests.length > 0) {
+    return [...new Set(tests)];
+  }
+
+  // Directory proximity fallback: find test assets in the same directory as source files
+  const sourceDirs = new Set(sourceFiles.map((f) => posixPath.dirname(f)));
+  for (const asset of testAssets) {
+    const assetDir = posixPath.dirname(asset.path);
+    // Check if asset is in the same directory or a parent test directory
+    if (
+      sourceDirs.has(assetDir) ||
+      asset.relatedTo.some((rel) => sourceDirs.has(posixPath.dirname(rel)))
+    ) {
       tests.push(asset.path);
     }
   }
